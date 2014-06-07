@@ -24,7 +24,7 @@ def rerun_monitors(args):
     from learning.utils.datalog import dlog, StoreToH5, TextPrinter
 
     from learning.experiment import Experiment
-    from learning.monitor import MonitorLL, DLogModelParams, SampleFromP
+    from learning.monitor import MonitorLL, SampleFromP, GradDetail
     from learning.dataset import MNIST
     from learning.preproc import PermuteColumns
 
@@ -96,7 +96,7 @@ def rerun_monitors(args):
         expname = expname[:-1]
     
 
-    result_dir = "reruns/%s" % os.path.basename(expname)
+    result_dir = "graddetail/%s" % os.path.basename(expname)
     results_fname = result_dir+"/results.h5"
     logger.info("Output logging to %s" % result_dir)
     os.makedirs(result_dir)
@@ -111,27 +111,24 @@ def rerun_monitors(args):
         print("Best on validation:    %5.2f  (iteration %d)" % (np.max(LL), np.argmax(LL)))
 
         logger.info("Loading dataset...")
-        testset = MNIST(fname="mnist_salakhutdinov.pkl.gz", which_set='test', preproc=preproc, n_datapoints=10000)
+        detailset = MNIST(fname="mnist_salakhutdinov.pkl.gz", which_set='train', preproc=preproc, n_datapoints=30)
 
         logger.info("Setting up monitors...")
-        monitors = [MonitorLL(data=testset, n_samples=[1000])]
+        monitors = [GradDetail(data=detailset, n_samples=5000)]
+        #monitors = [MonitorLL(data=detailset, n_samples=[100,]), GradDetail(data=detailset, n_samples=1000)]
         #monitors = [MonitorLL(data=testset, n_samples=[500,])]
         #monitors = [SampleFromP(n_samples=200)]
 
         for m in monitors:
             m.on_init(model)
 
-        logger.info("Loading model (row %d)..." % -1)
-        logger.info("LL on validation set: %f5.2" % LL[-1])
-        model.model_params_from_h5(h5, row=-1)
+        row = -2
+        logger.info("Loading model (row %d)..." % row)
+        logger.info("LL on validation set: %f5.2" % LL[row])
+
+        model.model_params_from_h5(h5, row=row)
         run_monitors(model, monitors)
 
-        best = np.argsort(LL)[:-5:-1]
-        for row in best:
-            logger.info("Loading model (row %d)..." % row)
-            logger.info("LL on validation set: %f5.2" % LL[row])
-            model.model_params_from_h5(h5, row=row)
-            run_monitors(model, monitors)
         
     logger.info("Finished.")
 

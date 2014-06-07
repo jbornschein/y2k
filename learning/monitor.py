@@ -121,6 +121,8 @@ class MonitorLL(Monitor):
         n_samples = self.n_samples
         n_datapoints = self.dataset.n_datapoints
 
+        all_log_px = np.zeros(n_datapoints)   # HACK
+        
         #
         for K in n_samples:
             if K <= 10:
@@ -145,11 +147,15 @@ class MonitorLL(Monitor):
                 batch_Hp, outputs = outputs[:n_layers], outputs[n_layers:]
                 batch_Hq          = outputs[:n_layers]
                 
+                all_log_px[batch_idx] = batch_L
+
                 L += batch_L
                 KL += np.array(batch_KL)
                 Hp += np.array(Hp)
                 Hq += np.array(Hq)
                 
+
+
             L /= n_datapoints
             KL /= n_datapoints
             Hp /= n_datapoints
@@ -160,8 +166,12 @@ class MonitorLL(Monitor):
             global validation_LL
             validation_LL = L
 
-            self.logger.info("MonitorLL (%d datpoints, %d samples): LL=%5.2f KL=%s" % (n_datapoints, K, L, KL))
+            bound = np.std(all_log_px, ddof=1) / np.sqrt(n_datapoints)
+
+            self.logger.info("MonitorLL (%d datpoints, %d samples): LL=%5.2f (+-%3.2f) KL=%s" % (n_datapoints, K, L, bound, KL))
             self.dlog.append_all({
+                prefix+"log_px": all_log_px,
+                prefix+"LL_bound": bound,
                 prefix+"LL": L,
                 prefix+"KL": KL,
                 prefix+"Hp": Hp,
@@ -207,4 +217,119 @@ class SampleFromP(Monitor):
         for l in xrange(n_layers):
             prefix = "L%d" % l
             self.dlog.append(prefix, samples[l])
+
+
+#-----------------------------------------------------------------------------
+from isws import f_replicate_batch, f_logsumexp
+
+class GradDetail(Monitor):
+    def __init__(self, data, n_samples):
+        super(GradDetail, self).__init__()
+
+        assert isinstance(data, DataSet)
+        self.dataset = data
+
+        assert isinstance(n_samples, int)
+        self.n_samples = n_samples
+
+    def compile(self, model):
+        assert isinstance(model, Model)
+        self.model = model
+
+        dataset = self.dataset
+        X, Y = dataset.preproc(dataset.X, dataset.Y)
+        self.X = theano.shared(X, "X")
+        self.Y = theano.shared(Y, "Y")
+
+        #---------------------------------------------------------------------------------
+        self.logger.info("compiling do_grad_detail")
+
+        n_samples  = self.n_samples
+        idx        = T.iscalar('idx')
+        batch_size = 1
+
+        X_batch, Y_batch = dataset.late_preproc(self.X[idx:idx+1], self.Y[idx:idx+1])
+        
+        p_layers = model.p_layers
+        q_layers = model.q_layers
+        n_layers = len(p_layers)
+
+        # Prepare input for layers
+        samples = [None]*n_layers
+        log_q   = [None]*n_layers
+        log_p   = [None]*n_layers
+
+        samples[0] = f_replicate_batch(X_batch, n_samples)                   # 
+        log_q[0]   = T.zeros([batch_size*n_samples])
+
+        # Generate samples (feed-forward)
+        for l in xrange(n_layers-1):
+            samples[l+1], log_q[l+1] = q_layers[l].sample(samples[l])
+        
+        # Get log_probs from generative model
+        log_p[n_layers-1] = p_layers[n_layers-1].log_prob(samples[n_layers-1])
+        for l in xrange(n_layers-1, 0, -1):
+            log_p[l-1] = p_layers[l-1].log_prob(samples[l-1], samples[l])
+
+        # Reshape and sum
+        log_p_all = T.zeros((batch_size, n_samples))
+        log_q_all = T.zeros((batch_size, n_samples))
+        for l in xrange(n_layers):
+            samples[l] = samples[l].reshape((batch_size, n_samples, p_layers[l].n_X))
+            log_q[l] = log_q[l].reshape((batch_size, n_samples))
+            log_p[l] = log_p[l].reshape((batch_size, n_samples))
+
+            log_p_all += log_p[l]   # agregate all layers
+            log_q_all += log_q[l]   # agregate all layers
+
+        # Unnormalized sampling weights
+        log_w = log_p_all - log_q_all     # shape: (1, n_samples)
+
+        # Approximate P(X)
+        log_px = f_logsumexp(log_w, axis=1)
+
+        cost_p = log_p_all
+        cost_q = log_q_all
+        
+        gradients = []
+        for s in xrange(n_samples):
+            for nl, layer in enumerate(p_layers):
+                for name, shvar in layer.get_model_params().iteritems():
+                    if name == 'W' and nl == 1:
+                        gradients.append(T.grad(cost_p[0,s], shvar)) #, consider_constant=[w]))
+ 
+        self.do_grad_detail = theano.function(  
+                            inputs=[idx], 
+                            outputs=[log_px, log_w] + gradients,
+                            name="do_grad_detail")
+
+    def on_init(self, model):
+        self.compile(model)
+
+    def on_iter(self, model):
+        n_samples = self.n_samples
+        n_datapoints = self.dataset.n_datapoints
+
+        prefix = "graddetail."
+        n_layers = len(model.p_layers)
+
+        # Iterate over dataset
+        for n in xrange(n_datapoints):
+            print "... datapoint %d ..." % n
+            outputs = self.do_grad_detail(n)
+            log_px, log_w, outputs = outputs[0], outputs[1], outputs[2:]
+                
+            self.dlog.append_all({
+                prefix+"log_px": log_px,
+                prefix+"log_w" : log_w,
+            })
+
+            for s in xrange(n_samples):
+                for nl, layer in enumerate(model.p_layers):
+                    for name, shvar in layer.get_model_params().iteritems():
+                        if name == 'W' and nl == 1:
+                            grad, outputs = outputs[0], outputs[1:]
+                    
+                            #import pdb; pdb.set_trace()
+                            self.dlog.append("%sL%d.%s" % (prefix, nl, name), grad)
 

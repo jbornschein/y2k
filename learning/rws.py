@@ -410,7 +410,7 @@ class LayerStack(Model):
     def model_params_from_h5(self, h5, row=-1, basekey="model."):
         for n,l in enumerate(self.p_layers):
             try:
-                if n not in self.fix_layers:
+                if len(self.fix_layers) > 0 and n not in self.fix_layers:   # XXX
                     continue
                 for pname, shvar in iteritems(l.get_model_params()):
                     key = "%sL%d.P.%s" % (basekey, n, pname)
@@ -427,7 +427,7 @@ class LayerStack(Model):
 
         for n,l in enumerate(self.q_layers):                
             try:
-                if n not in self.fix_layers:
+                if len(self.fix_layers) > 0 and n not in self.fix_layers:   # XXX
                     continue
                 for pname, shvar in iteritems(l.get_model_params()):
                     key = "%sL%d.Q.%s" % (basekey, n, pname)

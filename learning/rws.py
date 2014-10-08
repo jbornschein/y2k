@@ -184,6 +184,7 @@ class LayerStack(Model):
         # Hyper parameters
         self.register_hyper_param('p_layers', help='STBP P layers', default=[])
         self.register_hyper_param('q_layers', help='STBP Q layers', default=[])
+        self.register_hyper_param('fix_layers', help='layers not to optimize', default=[])
         self.register_hyper_param('n_samples', help='no. of samples to use', default=10)
 
         self.set_hyper_params(hyper_params)
@@ -305,6 +306,10 @@ class LayerStack(Model):
 
     def get_gradients(self, X, Y, lr_p, lr_q, n_samples, anneal=1.):
         """ return log_PX and an OrderedDict with parameter gradients """
+        p_layers = self.p_layers
+        q_layers = self.q_layers
+        fix_layers = self.fix_layers
+
         log_PX, w, log_p, log_q, KL, Hp, Hq = self.log_likelihood(X, Y, n_samples=n_samples, anneal=anneal)
         
         batch_log_PX = T.sum(log_PX)
@@ -312,11 +317,15 @@ class LayerStack(Model):
         cost_q = T.sum(T.sum(log_q*w, axis=1))
 
         gradients = OrderedDict()
-        for nl, layer in enumerate(self.p_layers):
+        for nl, layer in enumerate(p_layers):
+            if nl in fix_layers:
+                continue
             for name, shvar in iteritems(layer.get_model_params()):
                 gradients[shvar] = lr_p[nl] * T.grad(cost_p, shvar, consider_constant=[w])
 
-        for nl, layer in enumerate(self.q_layers):
+        for nl, layer in enumerate(q_layers):
+            if nl in fix_layers:
+                continue
             for name, shvar in iteritems(layer.get_model_params()):
                 gradients[shvar] = lr_q[nl] * T.grad(cost_q, shvar, consider_constant=[w])
 
@@ -326,6 +335,7 @@ class LayerStack(Model):
         p_layers = self.p_layers
         q_layers = self.q_layers
         n_layers = len(p_layers)
+        fix_layers = self.fix_layers
 
         p, log_p = self.sample_p(n_dreams)
 
@@ -337,6 +347,8 @@ class LayerStack(Model):
 
         gradients = OrderedDict()
         for nl, layer in enumerate(self.q_layers):
+            if nl in fix_layers:
+                continue
             for name, shvar in iteritems(layer.get_model_params()):
                 gradients[shvar] = lr_s[nl] * T.grad(cost_q, shvar)
 
@@ -398,12 +410,15 @@ class LayerStack(Model):
     def model_params_from_h5(self, h5, row=-1, basekey="model."):
         for n,l in enumerate(self.p_layers):
             try:
+                if n not in self.fix_layers:
+                    continue
                 for pname, shvar in iteritems(l.get_model_params()):
                     key = "%sL%d.P.%s" % (basekey, n, pname)
                     value = h5[key][row]
                     shvar.set_value(value)
             except KeyError:
-                if n >= len(self.p_layers)-2:
+                #if n >= len(self.p_layers)-2:
+                if n >= 1:
                     _logger.warning("Unable to load top P-layer params %s[%d]... continuing" % (key, row))
                     continue
                 else:
@@ -412,12 +427,15 @@ class LayerStack(Model):
 
         for n,l in enumerate(self.q_layers):                
             try:
+                if n not in self.fix_layers:
+                    continue
                 for pname, shvar in iteritems(l.get_model_params()):
                     key = "%sL%d.Q.%s" % (basekey, n, pname)
                     value = h5[key][row]
                     shvar.set_value(value)
             except KeyError:
-                if n == len(self.q_layers)-1:
+                #if n == len(self.q_layers)-1:
+                if n >= 1:
                     _logger.warning("Unable to load top Q-layer params %s[%d]... continuing" % (key, row))
                     continue
                 _logger.error("Unable to load %s[%d] from %s" % (key, row, h5.filename))

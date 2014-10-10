@@ -29,6 +29,7 @@ def run_experiment(args):
     from learning.darn import DARN, DARNTop
     from learning.nade import NADE, NADETop
 
+    np.set_printoptions(precision=2)
 
     logger.debug("Arguments %s" % args)
     tags = []
@@ -128,11 +129,11 @@ def run_experiment(args):
 
     # Dataset
     if args.shuffle:
-        preproc = []
-        tags += ["shuffle"]
-    else:
         np.random.seed(23)
         preproc = [PermuteColumns()]
+        tags += ["shuffle"]
+    else:
+        preproc = []
 
     if args.split59k:
         dataset = MNIST(fname="mnist_salakhutdinov.pkl.gz", which_set='salakhutdinov_train', preproc=preproc, n_datapoints=59000)

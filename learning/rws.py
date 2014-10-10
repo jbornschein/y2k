@@ -185,6 +185,7 @@ class LayerStack(Model):
         self.register_hyper_param('p_layers', help='STBP P layers', default=[])
         self.register_hyper_param('q_layers', help='STBP Q layers', default=[])
         self.register_hyper_param('fix_layers', help='layers not to optimize', default=[])
+        self.register_hyper_param('layer_weights', help='weight layer LLs', default=None)
         self.register_hyper_param('n_samples', help='no. of samples to use', default=10)
 
         self.set_hyper_params(hyper_params)
@@ -266,14 +267,18 @@ class LayerStack(Model):
         q_layers = self.q_layers
         n_layers = len(p_layers)
 
-        if n_samples == None:
+        if n_samples is None:
             n_samples = self.n_samples
+
 
         batch_size = X.shape[0]
 
         # Get samples
         X = f_replicate_batch(X, n_samples)
         samples, log_p, log_q = self.sample_q(X, None)
+
+        if self.layer_weights is not None:
+            log_p = [f*lp for f, lp in zip(self.layer_weights, log_p)]
 
         # Reshape and sum
         log_p_all = T.zeros((batch_size, n_samples))

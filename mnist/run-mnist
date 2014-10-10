@@ -74,10 +74,15 @@ def run_experiment(args):
     if args.fix_layers != "":
         fix_layers = [int(s) for s in args.fix_layers.split(",")]
 
+    # Layer weights 
+    if args.layer_weights != "":
+        layer_weights = [float(s) for s in args.layer_weights.split(",")]
+
     model = LayerStack(
         p_layers=p_layers,
         q_layers=q_layers,
-        fix_layers=fix_layers
+        fix_layers=fix_layers,
+        layer_weights=layer_weights
     )
     model.setup()
 
@@ -139,7 +144,6 @@ def run_experiment(args):
         valiset = MNIST(fname="mnist_salakhutdinov.pkl.gz", which_set='valid', preproc=preproc, n_datapoints=10000)
         testset = MNIST(fname="mnist_salakhutdinov.pkl.gz", which_set='test', preproc=preproc, n_datapoints=10000)
 
-
     if args.lookahead != 10:
         tags += ["lah%d" % args.lookahead]
 
@@ -157,7 +161,6 @@ def run_experiment(args):
         learning_rate_q=lr_q,
         learning_rate_s=lr_s,
         layer_discount=args.ldiscount,
-        anneal=1.,
         dataset=dataset, 
         model=model,
         termination=EarlyStopping(lookahead=args.lookahead, min_epochs=10),
@@ -224,6 +227,7 @@ if __name__ == "__main__":
     parser.add_argument('--lr_q', default=None, type=float, help="wake-q-learing rate")
     parser.add_argument('--lr_s', default=None, type=float, help="sleep-q-learning rate")
     parser.add_argument('--ldiscount', default=1., type=float, help="layer_discount")
+    parser.add_argument('--layer-weights', default="", type=str, help="weight layer LL differently")
     parser.add_argument('--fix-layers', default="", type=str, help="layers which are not optimized")
     parser.add_argument('--split59k', '--s59k', default=False, action="store_true", 
         help="Use 59k-1k-10k dataset split");

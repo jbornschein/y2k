@@ -261,7 +261,7 @@ class LayerStack(Model):
 
         return samples, log_p, log_q
  
-    def log_likelihood(self, X, Y=None, n_samples=None, anneal=1.):
+    def log_likelihood(self, X, Y=None, n_samples=None):
         p_layers = self.p_layers
         q_layers = self.q_layers
         n_layers = len(p_layers)
@@ -289,9 +289,9 @@ class LayerStack(Model):
         log_px = f_logsumexp(log_p_all-log_q_all, axis=1) - T.log(n_samples)
         
         # Calculate samplig weights
-        log_pq_annealed = anneal * (log_p_all-log_q_all-T.log(n_samples))
-        w_norm = f_logsumexp(log_pq_annealed, axis=1)
-        w = T.exp(log_pq_annealed-T.shape_padright(w_norm))
+        log_pq = (log_p_all-log_q_all-T.log(n_samples))
+        w_norm = f_logsumexp(log_pq, axis=1)
+        w = T.exp(log_pq-T.shape_padright(w_norm))
 
         # Calculate KL(P|Q), Hp, Hq
         KL = [None]*n_layers
@@ -304,13 +304,13 @@ class LayerStack(Model):
 
         return log_px, w, log_p_all, log_q_all, KL, Hp, Hq
 
-    def get_gradients(self, X, Y, lr_p, lr_q, n_samples, anneal=1.):
+    def get_gradients(self, X, Y, lr_p, lr_q, n_samples):
         """ return log_PX and an OrderedDict with parameter gradients """
         p_layers = self.p_layers
         q_layers = self.q_layers
         fix_layers = self.fix_layers
 
-        log_PX, w, log_p, log_q, KL, Hp, Hq = self.log_likelihood(X, Y, n_samples=n_samples, anneal=anneal)
+        log_PX, w, log_p, log_q, KL, Hp, Hq = self.log_likelihood(X, Y, n_samples=n_samples)
         
         batch_log_PX = T.sum(log_PX)
         cost_p = T.sum(T.sum(log_p*w, axis=1))

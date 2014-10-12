@@ -298,7 +298,8 @@ class LayerStack(Model):
         # Calculate samplig weights
         log_pq = (log_p_all-log_q_all-T.log(n_samples))
         w_norm = f_logsumexp(log_pq, axis=1)
-        w = T.exp(log_pq-T.shape_padright(w_norm))
+        log_w = log_pq-T.shape_padright(w_norm)
+        w = T.exp(log_w)
 
         # Calculate KL(P|Q), Hp, Hq
         KL = [None]*n_layers
@@ -306,7 +307,7 @@ class LayerStack(Model):
         Hq = [None]*n_layers
         for l in xrange(n_layers):
             KL[l] = T.sum(w*(log_p[l]-log_q[l]), axis=1)
-            Hp[l] = T.sum(w*log_p[l], axis=1)
+            Hp[l] = f_logsumexp(log_w+log_p)
             Hq[l] = T.sum(w*log_q[l], axis=1)
 
         return log_px, w, log_p_all, log_q_all, KL, Hp, Hq

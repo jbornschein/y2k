@@ -278,6 +278,7 @@ class LayerStack(Model):
         X = f_replicate_batch(X, n_samples)
         samples, log_p, log_q = self.sample_q(X, None)
 
+        # Apply LL layer weights
         if self.layer_weights is not None:
             log_p = [f*lp for f, lp in zip(self.layer_weights, log_p)]
 

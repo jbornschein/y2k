@@ -232,7 +232,7 @@ class LayerStack(Model):
         
         return samples, log_prob
 
-    def sample_q(self, X, Y=None):
+    def sample_q(self, X, Y=None, batch_size=None, n_samples=None):
         """ Given a set of observed X, samples from q(H | X) and calculate 
             both P(X, H) and Q(H | X)
         """
@@ -241,6 +241,9 @@ class LayerStack(Model):
         n_layers = len(p_layers)
 
         size = X.shape[0]
+        if batch_size is None:
+            n_samples = 10  # self.n_samples
+            batch_size = 25 #size / n_samples
 
         # Prepare input for layers
         samples = [None]*n_layers
@@ -254,8 +257,31 @@ class LayerStack(Model):
         for l in xrange(n_layers-1):
             samples[l+1], log_q[l+1] = q_layers[l].sample(samples[l])
         
-        # Get log_probs from generative model
-        log_p[n_layers-1] = p_layers[n_layers-1].log_prob(samples[n_layers-1])
+        # Get log_probs from generative model ... top layer first ...
+
+        # Deal wiith top layer fiest
+        loose_prior = True
+        if loose_prior:
+            D_low = q_layers[-1].n_Y
+            h_top = samples[-1]
+            h_low = samples[-2]
+
+            #h_top = T.repeat(h_top, n_samples, axis=0)
+            h_top = f_replicate_batch(h_top, n_samples)
+            h_low = h_low.reshape( [batch_size, 1, n_samples, D_low] )
+            h_low = h_low * T.ones( [batch_size, n_samples, n_samples, D_low] ) 
+            h_low = h_low.reshape( [batch_size*n_samples*n_samples, D_low] )
+            #h_low = T.tile(h_low.reshape([batch_size, n_samples, D_low]), (1, n_samples, 1)).reshape([batch_size*n_samples*n_samples, D_low])
+            z  = q_layers[-1].log_prob(h_top, h_low)
+            loose_prior = f_logsumexp( z.reshape( [size, n_samples] ), axis=1) - T.log(n_samples)
+            log_p[-1] = loose_prior + p_layers[-1].log_prob(samples[-1]) / 2.
+        else:
+            log_p[-1] = p_layers[-1].log_prob(samples[-1])
+
+        #log_p[-1] = np.log(1./1000) + 0.00001*p_layers[-1].log_prob(samples[-1])
+        #log_p[-1] = 0.99999 * log_q[-1] + 0.00001 * p_layers[-1].log_prob(samples[-1])
+    
+        # ... and the rest of the genrative model
         for l in xrange(n_layers-1, 0, -1):
             log_p[l-1] = p_layers[l-1].log_prob(samples[l-1], samples[l])
 
@@ -273,7 +299,7 @@ class LayerStack(Model):
 
         # Get samples
         X = f_replicate_batch(X, n_samples)
-        samples, log_p, log_q = self.sample_q(X, None)
+        samples, log_p, log_q = self.sample_q(X, None, batch_size=batch_size, n_samples=n_samples)
 
         # Reshape and sum
         log_p_all = T.zeros((batch_size, n_samples))
@@ -314,10 +340,12 @@ class LayerStack(Model):
         cost_q = T.sum(T.sum(log_q*w, axis=1))
 
         gradients = OrderedDict()
+        #for nl, layer in enumerate(self.p_layers[-2:]):
         for nl, layer in enumerate(self.p_layers):
             for name, shvar in iteritems(layer.get_model_params()):
                 gradients[shvar] = lr_p[nl] * T.grad(cost_p, shvar, consider_constant=[w])
 
+        #for nl, layer in enumerate(self.q_layers[-1:]):
         for nl, layer in enumerate(self.q_layers):
             for name, shvar in iteritems(layer.get_model_params()):
                 gradients[shvar] = lr_q[nl] * T.grad(cost_q, shvar, consider_constant=[w])
@@ -338,6 +366,7 @@ class LayerStack(Model):
         cost_q = T.sum(log_q)
 
         gradients = OrderedDict()
+        #for nl, layer in enumerate(self.q_layers[-1:]):
         for nl, layer in enumerate(self.q_layers):
             for name, shvar in iteritems(layer.get_model_params()):
                 gradients[shvar] = lr_s[nl] * T.grad(cost_q, shvar)

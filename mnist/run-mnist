@@ -160,11 +160,13 @@ def run_experiment(args):
         epoch_monitors=[
             DLogModelParams(), 
             SampleFromP(n_samples=100),
-            MonitorLL(name="valiset", data=valiset, n_samples=[1, 5, 25, 100]),
+            MonitorLL(name="valiset", data=valiset, n_samples=[1, 5, 25]),
         ],
         final_monitors=[
             MonitorLL(name="final-valiset", data=valiset, n_samples=[1, 5, 10, 25, 100, 500, 1000]),
             MonitorLL(name="final-testset", data=testset, n_samples=[1, 5, 10, 25, 100, 500, 1000]),
+            #MonitorLL(name="final-valiset", data=valiset, n_samples=[1, 5, 10, 25, 100]), #, 100, 500, 1000]),
+            #MonitorLL(name="final-testset", data=testset, n_samples=[1, 5, 10, 25, 100]), #, 100, 500, 1000]),
         ],
     )
 

@@ -259,8 +259,8 @@ class LayerStack(Model):
         
         # Get log_probs from generative model ... top layer first ...
 
-        # Deal wiith top layer fiest
-        loose_prior = True
+        # Deal with top layer fiest
+        loose_prior = False
         if loose_prior:
             D_low = q_layers[-1].n_Y
             h_top = samples[-1]

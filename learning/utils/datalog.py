@@ -344,6 +344,16 @@ class RootLogger(DataLog):
             raise TypeError('Table-name must be a string (or a list of strings)')
         return handler
 
+    def remove_all_handlers(self):
+        """ Remove all handlers """
+        if self.comm.rank != 0:
+            return
+        
+        for a_tblname, a_handler in self.policy:
+            a_handler.close()
+        self.policy = []
+        self._lookup_cache = {}
+
     def remove_handler(self, handler):
         """ Remove specified handler so that data is no longer stored there. """
         if self.comm.rank != 0:

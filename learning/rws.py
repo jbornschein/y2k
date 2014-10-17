@@ -116,6 +116,7 @@ class TopModule(Model):
         """
         return log_p
 
+
 class Module(Model):
     __metaclass__ = ABCMeta
 
@@ -187,6 +188,7 @@ class LayerStack(Model):
         self.register_hyper_param('q_layers', help='STBP Q layers', default=[])
         self.register_hyper_param('fix_layers', help='layers not to optimize', default=[])
         self.register_hyper_param('layer_weights', help='weight layer LLs', default=None)
+        self.register_hyper_param('loose_prior', help='loose', default=False)
         self.register_hyper_param('n_samples', help='no. of samples to use', default=10)
 
         self.set_hyper_params(hyper_params)
@@ -262,21 +264,22 @@ class LayerStack(Model):
         # Get log_probs from generative model ... top layer first ...
 
         # Deal with top layer fiest
-        loose_prior = False
-        if loose_prior:
+        #loose_prior = False
+        if self.loose_prior:
             D_low = q_layers[-1].n_Y
             h_top = samples[-1]
             h_low = samples[-2]
 
             #h_top = T.repeat(h_top, n_samples, axis=0)
-            h_top = f_replicate_batch(h_top, n_samples)
-            h_low = h_low.reshape( [batch_size, 1, n_samples, D_low] )
-            h_low = h_low * T.ones( [batch_size, n_samples, n_samples, D_low] ) 
-            h_low = h_low.reshape( [batch_size*n_samples*n_samples, D_low] )
             #h_low = T.tile(h_low.reshape([batch_size, n_samples, D_low]), (1, n_samples, 1)).reshape([batch_size*n_samples*n_samples, D_low])
-            z  = q_layers[-1].log_prob(h_top, h_low)
-            loose_prior = f_logsumexp( z.reshape( [size, n_samples] ), axis=1) - T.log(n_samples)
-            log_p[-1] = loose_prior + p_layers[-1].log_prob(samples[-1]) / 2.
+            #h_top = f_replicate_batch(h_top, n_samples)
+            #h_low = h_low.reshape( [batch_size, 1, n_samples, D_low] )
+            #h_low = h_low * T.ones( [batch_size, n_samples, n_samples, D_low] ) 
+            #h_low = h_low.reshape( [batch_size*n_samples*n_samples, D_low] )
+            #z  = q_layers[-1].log_prob(h_top, h_low)
+            #loose_prior = f_logsumexp( z.reshape( [size, n_samples] ), axis=1) - T.log(n_samples)
+            #log_p[-1] = loose_prior + p_layers[-1].log_prob(samples[-1]) / 2.
+            log_p[-1] = log_q[-1] + p_layers[-1].log_prob(samples[-1]) / 10
         else:
             log_p[-1] = p_layers[-1].log_prob(samples[-1])
 

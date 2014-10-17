@@ -114,6 +114,7 @@ class Experiment(object):
         assert self.out_dir
 
         results_fname = os.path.join(self.out_dir, "results.h5")
+        dlog.remove_all_handlers()
         dlog.set_handler("*", StoreToH5, results_fname)
 
         #FORMAT = '[%(asctime)s] %(module)-15s %(message)s'
@@ -204,9 +205,9 @@ class Experiment(object):
         if not isinstance(self.trainer, TrainerBase):
             raise ValueError("Trainer not set properly")
         
-        if not any( [isinstance(m, DLogModelParams) for m in self.trainer.epoch_monitors] ):
-            self.logger.warn("DLogModelParams is not setup as an epoch_monitor. Model parameters wouldn't be saved. Adding default DLogModelParams()")
-            self.trainer.epoch_monitors += DLogModelParams()
+        #if not any( [isinstance(m, DLogModelParams) for m in self.trainer.epoch_monitors] ):
+        #    self.logger.warn("DLogModelParams is not setup as an epoch_monitor. Model parameters wouldn't be saved. Adding default DLogModelParams()")
+        #    self.trainer.epoch_monitors += DLogModelParams()
 
     def set_trainer(self, trainer):
         assert isinstance(trainer, TrainerBase)

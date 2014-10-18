@@ -17,7 +17,7 @@ logger = logging.getLogger()
 
 def run_experiment(args):
     from learning.experiment import Experiment
-    from learning.training import Trainer
+    from learning.training import Trainer, AdaGradTrainer
     from learning.termination import EarlyStopping
     from learning.monitor import MonitorLL, DLogModelParams, SampleFromP
     from learning.monitor.bootstrap import BootstrapLL
@@ -147,7 +147,8 @@ def run_experiment(args):
     logger.info("Running %s" % expname)
 
     
-    trainer = Trainer(
+    #trainer = Trainer(
+    trainer = AdaGradTrainer(
         batch_size=batch_size,
         n_samples=n_samples,
         sleep_interleave=sleep_interleave,

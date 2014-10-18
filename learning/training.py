@@ -335,3 +335,96 @@ class Trainer(TrainerBase):
                 m.on_iter(self.model)
 
         return LL
+
+
+
+#=============================================================================
+# BatchedSGD trainer
+class AdaGradTrainer(Trainer):
+    def __init__(self, **hyper_params):
+        super(AdaGradTrainer, self).__init__(**hyper_params)
+
+    def compile(self):
+        """ Theano-compile neccessary functions """
+        model = self.model
+
+        assert isinstance(model, Model)
+
+        model.setup()
+        self.update_shvars()
+
+        #---------------------------------------------------------------------
+        self.logger.info("compiling do_step")
+
+        lr_p = self.shvar['lr_p']
+        lr_q = self.shvar['lr_q']
+        beta = self.shvar['beta']
+        anneal = self.shvar['anneal']
+        batch_size = self.shvar['batch_size']
+        n_samples = self.shvar['n_samples']
+
+        batch_idx = T.iscalar('batch_idx')
+        batch_idx.tag.test_value = 0
+
+        first = batch_idx*batch_size
+        last  = first + batch_size
+        X_batch = self.train_X[self.train_perm[first:last]]
+        #Y_batch = self.train_Y[self.train_perm[first:last]]
+
+        X_batch, _ = self.dataset.late_preproc(X_batch, None)
+        
+        batch_log_PX, gradients = model.get_gradients(X_batch, None,
+                    lr_p=lr_p, lr_q=lr_q,
+                    n_samples=n_samples, anneal=anneal)
+        batch_log_PX = batch_log_PX / batch_size
+
+        fudge = 1e-6
+
+        # Initialize historical gradients
+        hist_gradients = {}
+        for param, grad in iteritems(gradients):
+            name = grad.name
+            hist_gradients[param] = theano.shared(param.get_value()*0., name=("%s_hist"%name))
+
+        updates = OrderedDict()
+        for param, grad in iteritems(gradients):
+            hist_grad = hist_gradients[param] 
+
+            updated_hist_grad = hist_grad + grad**2
+            adjusted_grad = grad / (fudge + T.sqrt(updated_hist_grad))
+
+            updates[hist_grad] = updated_hist_grad
+            updates[param] = param + 1*adjusted_grad
+
+        self.do_step = theano.function(  
+                            inputs=[batch_idx],
+                            outputs=batch_log_PX, #, Lp, Lq, w],
+                            updates=updates,
+                            name="do_step")
+
+        #---------------------------------------------------------------------
+        self.logger.info("compiling do_sleep_step")
+        n_dreams = T.iscalar('n_dreams')
+        n_dreams.tag.test_value = 10 
+
+        beta = self.shvar['beta']
+        lr_s = self.shvar['lr_s']
+        
+        log_PX, gradients = model.get_sleep_gradients(lr_s, n_dreams)
+        log_PX = T.sum(log_PX)
+
+        updates = OrderedDict()
+        for param, grad in iteritems(gradients):
+            hist_grad = hist_gradients[param] 
+
+            updated_hist_grad = hist_grad + grad**2
+            adjusted_grad = grad / (fudge + T.sqrt(updated_hist_grad))
+
+            updates[hist_grad] = updated_hist_grad
+            updates[param] = param + 1*adjusted_grad
+
+        self.do_sleep_step = theano.function(  
+                            inputs=[n_dreams],
+                            outputs=log_PX,
+                            updates=updates,
+                            name="do_sleep_step")

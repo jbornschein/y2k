@@ -396,10 +396,11 @@ class AdaGradTrainer(Trainer):
         for param, grad in iteritems(gradients):
             hist_grad = hist_gradients[param] 
 
-            if allclose(hist_grad, 0):
-                updated_hist_grad = grad**2
-            else:
-                updated_hist_grad = beta*hist_grad + (1-beta)*grad**2
+            #if allclose(hist_grad, 0):
+            #    updated_hist_grad = grad**2
+            #else:
+            #    updated_hist_grad = beta*hist_grad + (1-beta)*grad**2
+            updated_hist_grad = hist_grad + grad**2
             adjusted_grad = grad / (fudge + T.sqrt(updated_hist_grad))
 
             updates[hist_grad] = updated_hist_grad
@@ -426,10 +427,11 @@ class AdaGradTrainer(Trainer):
         for param, grad in iteritems(gradients):
             hist_grad = hist_gradients[param] 
 
-            if allclose(hist_grad, 0):
-                updated_hist_grad = grad**2
-            else:
-                updated_hist_grad = beta*hist_grad + (1-beta)*grad**2
+            #if allclose(hist_grad, 0):
+            #    updated_hist_grad = grad**2
+            #else:
+            #    updated_hist_grad = beta*hist_grad + (1-beta)*grad**2
+            updated_hist_grad = hist_grad + grad**2
             adjusted_grad = grad / (fudge + T.sqrt(updated_hist_grad))
 
             updates[hist_grad] = updated_hist_grad

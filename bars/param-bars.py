@@ -2,7 +2,7 @@
 import numpy as np
 
 from learning.dataset import BarsData, FromModel, MNIST
-from learning.training import Trainer
+from learning.training import Trainer, AdaGradTrainer
 from learning.termination import LogLikelihoodIncrease, EarlyStopping
 from learning.monitor import MonitorLL, DLogModelParams, SampleFromP
 from learning.monitor.bootstrap import BootstrapLL
@@ -44,11 +44,11 @@ model = LayerStack(
     q_layers=q_layers,
 )
 
-trainer = Trainer(
+trainer = AdaGradTrainer(
     n_samples=10,
-    learning_rate_p=1e-1,
-    learning_rate_q=1e-1,
-    learning_rate_s=1e-1,
+    learning_rate_p=1e-2,
+    learning_rate_q=1e-2,
+    learning_rate_s=1e-2,
     batch_size=10,
     dataset=dataset, 
     model=model,
@@ -60,7 +60,7 @@ trainer = Trainer(
     epoch_monitors=[
         DLogModelParams(),
         MonitorLL(name="valiset", data=valiset, n_samples=[1, 5, 25, 100]),
-        MonitorLL(name="testset", data=testset, n_samples=[1, 5, 25, 100]),
+        #MonitorLL(name="testset", data=testset, n_samples=[1, 5, 25, 100]),
         #BootstrapLL(name="valiset-bootstrap", data=valiset, n_samples=[1, 5, 25, 100])
     ],
     final_monitors=[

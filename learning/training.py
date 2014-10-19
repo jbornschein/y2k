@@ -27,6 +27,10 @@ from model import Model
 theano_rng = RandomStreams(seed=2341)
 floatX = theano.config.floatX
 
+
+def allclose(a, b):
+    return (T.abs_(a-b) < 1e-8).all()
+
 #=============================================================================
 # Trainer base class
 class TrainerBase(HyperBase):
@@ -124,8 +128,8 @@ class Trainer(TrainerBase):
         self.mk_shvar('n_samples', 100)
         self.mk_shvar('batch_size', 100)
         self.mk_shvar('permutation', np.zeros(10), lambda self: np.zeros(10))
-        self.mk_shvar('beta', 1.0)
-        self.mk_shvar('anneal', 1.0)
+        self.mk_shvar('beta', self.beta)
+        self.mk_shvar('anneal', self.anneal)
         self.mk_shvar('lr_p', np.zeros(2), lambda self: calc_learning_rates(self.learning_rate_p))
         self.mk_shvar('lr_q', np.zeros(2), lambda self: calc_learning_rates(self.learning_rate_q))
         self.mk_shvar('lr_s', np.zeros(2), lambda self: calc_learning_rates(self.learning_rate_s))
@@ -356,8 +360,10 @@ class AdaGradTrainer(Trainer):
         #---------------------------------------------------------------------
         self.logger.info("compiling do_step")
 
+        n_layers = len(self.model.p_layers)
+        lr_ones = np.ones(n_layers, dtype=floatX)
+
         lr_p = self.shvar['lr_p']
-        lr_q = self.shvar['lr_q']
         beta = self.shvar['beta']
         anneal = self.shvar['anneal']
         batch_size = self.shvar['batch_size']
@@ -374,7 +380,7 @@ class AdaGradTrainer(Trainer):
         X_batch, _ = self.dataset.late_preproc(X_batch, None)
         
         batch_log_PX, gradients = model.get_gradients(X_batch, None,
-                    lr_p=lr_p, lr_q=lr_q,
+                    lr_p=lr_ones, lr_q=lr_ones,
                     n_samples=n_samples, anneal=anneal)
         batch_log_PX = batch_log_PX / batch_size
 
@@ -390,11 +396,14 @@ class AdaGradTrainer(Trainer):
         for param, grad in iteritems(gradients):
             hist_grad = hist_gradients[param] 
 
-            updated_hist_grad = hist_grad + grad**2
+            if allclose(hist_grad, 0):
+                updated_hist_grad = grad**2
+            else:
+                updated_hist_grad = beta*hist_grad + (1-beta)*grad**2
             adjusted_grad = grad / (fudge + T.sqrt(updated_hist_grad))
 
             updates[hist_grad] = updated_hist_grad
-            updates[param] = param + 1*adjusted_grad
+            updates[param] = param + lr_p[0]*adjusted_grad
 
         self.do_step = theano.function(  
                             inputs=[batch_idx],
@@ -410,18 +419,21 @@ class AdaGradTrainer(Trainer):
         beta = self.shvar['beta']
         lr_s = self.shvar['lr_s']
         
-        log_PX, gradients = model.get_sleep_gradients(lr_s, n_dreams)
+        log_PX, gradients = model.get_sleep_gradients(lr_ones, n_dreams)
         log_PX = T.sum(log_PX)
 
         updates = OrderedDict()
         for param, grad in iteritems(gradients):
             hist_grad = hist_gradients[param] 
 
-            updated_hist_grad = hist_grad + grad**2
+            if allclose(hist_grad, 0):
+                updated_hist_grad = grad**2
+            else:
+                updated_hist_grad = beta*hist_grad + (1-beta)*grad**2
             adjusted_grad = grad / (fudge + T.sqrt(updated_hist_grad))
 
             updates[hist_grad] = updated_hist_grad
-            updates[param] = param + 1*adjusted_grad
+            updates[param] = param + lr_s[0]*adjusted_grad
 
         self.do_sleep_step = theano.function(  
                             inputs=[n_dreams],

@@ -132,3 +132,26 @@ class PermuteColumns(Preproc):
         X = X[:, self.permutation]
 
         return X, Y
+
+#-----------------------------------------------------------------------------
+class QuantNoise(Preproc):
+    def __init__(self, strength=1/255.):
+        """
+        Binarize data in X; assuming that input data was 0 <= X <= 1.
+
+        Parameters
+        ----------
+        steps : {float, None}
+            Threshold when a input is considerd 1; If None, the value in 
+            X determines the probability of the binarized element being a 1.
+
+        """
+        self.strength = strength
+
+    def late_preproc(self, X, Y):
+        """ Add uniform noise """
+
+        noise = theano_rng.uniform(size=X.shape, ndim=2, low=0.0, high=self.strength)
+
+        return X+noise, Y
+

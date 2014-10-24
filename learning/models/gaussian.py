@@ -17,6 +17,68 @@ _logger = logging.getLogger(__name__)
 floatX = theano.config.floatX
 
 
+
+class FixedDiagonalGaussianTop(TopModule):
+    """ DiagonalGaussian top layer """ 
+    def __init__(self, **hyper_params):
+        super(FixedDiagonalGaussianTop, self).__init__()
+        
+        # Hyper parameters
+        self.register_hyper_param('n_X', help='no. binary variables')
+
+        self.set_hyper_params(hyper_params)
+    
+    def log_prob(self, X):
+        """ Evaluate the log-probability for the given samples.
+
+        Parameters
+        ----------
+        X:      T.tensor 
+            samples from X
+
+        Returns
+        -------
+        log_p:  T.tensor
+            log-probabilities for the samples in X
+        """
+        n_X, = self.get_hyper_params(['n_X'])
+        mu         = np.zeros(n_X, dtype=floatX)
+        log_sigma2 = np.zeros(n_X, dtype=floatX)
+
+        # Calculate multivariate diagonal Gaussian
+        log_prob =  -0.5*T.log(2*np.pi) - 0.5*log_sigma2 -0.5*(X-mu)**2 / T.exp(log_sigma2)
+        log_prob = log_prob.sum(axis=1)
+
+        return log_prob
+
+    def sample(self, n_samples):
+        """ Sample from this toplevel module and return X ~ P(X), log(P(X))
+
+        Parameters
+        ----------
+        n_samples:
+            number of samples to drawn
+
+        Returns
+        -------
+        X:      T.tensor
+            samples from this module
+        log_p:  T.tensor
+            log-probabilities for the samples returned in X
+        """
+        n_X, = self.get_hyper_params(['n_X'])
+        mu         = np.zeros(n_X, dtype=floatX)
+        log_sigma2 = np.zeros(n_X, dtype=floatX)
+
+        # Samples from multivariate diagonal Gaussian
+        X = theano_rng.normal(
+                size=(n_samples, n_X), 
+                avg=mu, std=T.exp(0.5*log_sigma2),
+                dtype=floatX)
+
+        return X, self.log_prob(X)
+
+
 class DiagonalGaussianTop(TopModule):
     """ DiagonalGaussian top layer """ 
     def __init__(self, **hyper_params):

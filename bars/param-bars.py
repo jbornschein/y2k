@@ -13,7 +13,7 @@ from learning.darn import DARN, DARNTop
 from learning.nade import NADE, NADETop
 
 n_vis = 5*5
-n_hid = 15
+n_hid = 30
 n_qhid = 2*n_hid
 
 dataset = BarsData(which_set='train', n_datapoints=10000)
@@ -27,6 +27,8 @@ p_layers=[
     ),
     SBNTop(
         n_X=n_hid,
+        sparsity=0.1,
+        prior_strength=0.,
     )
 ]
 
@@ -46,9 +48,9 @@ model = LayerStack(
 
 trainer = Trainer(
     n_samples=10,
-    learning_rate_p=1e-1,
-    learning_rate_q=1e-1,
-    learning_rate_s=1e-1,
+    learning_rate_p=3e-2,
+    learning_rate_q=3e-2,
+    learning_rate_s=3e-2,
     batch_size=10,
     dataset=dataset, 
     model=model,
@@ -61,6 +63,7 @@ trainer = Trainer(
         DLogModelParams(),
         MonitorLL(name="valiset", data=valiset, n_samples=[1, 5, 25, 100]),
         MonitorLL(name="testset", data=testset, n_samples=[1, 5, 25, 100]),
+        SampleFromP(n_samples=100),
         #BootstrapLL(name="valiset-bootstrap", data=valiset, n_samples=[1, 5, 25, 100])
     ],
     final_monitors=[

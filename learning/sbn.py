@@ -25,6 +25,8 @@ class SBNTop(TopModule):
         
         # Hyper parameters
         self.register_hyper_param('n_X', help='no. binary variables')
+        self.register_hyper_param('sparsity', default=0.5, help='')
+        self.register_hyper_param('prior_strength', default=1e-3, help='')
 
         # Model parameters
         self.register_model_param('a', help='sigmoid(a) prior', 
@@ -45,13 +47,15 @@ class SBNTop(TopModule):
         log_p:  T.tensor
             log-probabilities for the samples in X
         """
-        n_X, = self.get_hyper_params(['n_X'])
+        n_X, sparsity, prior_strength = self.get_hyper_params(['n_X', 'sparsity', 'prior_strength'])
         a, = self.get_model_params(['a'])
 
         # Calculate log-bernoulli
         prob_X = self.sigmoid(a)
         log_prob = X*T.log(prob_X) + (1-X)*T.log(1-prob_X)
         log_prob = log_prob.sum(axis=1)
+        log_prob += prior_strength * (n_X * T.log(1-sparsity) + T.sum(X, axis=1)*T.log(sparsity/(1-sparsity)))
+        #log_prob += T.sum(X, axis=1)*T.log(sparsity/(1-sparsity))
 
         return log_prob
 
@@ -70,7 +74,7 @@ class SBNTop(TopModule):
         log_p:  T.tensor
             log-probabilities for the samples returned in X
         """
-        n_X, = self.get_hyper_params(['n_X'])
+        n_X, sparsity = self.get_hyper_params(['n_X', 'sparsity'])
         a, = self.get_model_params(['a'])
 
         # sample hiddens
@@ -89,6 +93,8 @@ class SBN(Module):
 
         self.register_hyper_param('n_X', help='no. lower-layer binary variables')
         self.register_hyper_param('n_Y', help='no. upper-layer binary variables')
+        self.register_hyper_param('sparsity', default=0.5, help='')
+        self.register_hyper_param('prior_strength', default=1e-3, help='')
 
         # Sigmoid Belief Layer
         self.register_model_param('b', help='P lower-layer bias', default=lambda: -np.ones(self.n_X))
@@ -111,12 +117,14 @@ class SBN(Module):
         log_p:  T.tensor
             log-probabilities for the samples in X and Y
         """
+        n_Y, sparsity, prior_strength = self.get_hyper_params(['n_Y', 'sparsity', 'prior_strength'])
         W, b = self.get_model_params(['W', 'b'])
 
         # posterior P(X|Y)
         prob_X = self.sigmoid(T.dot(Y, W) + b)
         log_prob = X*T.log(prob_X) + (1-X)*T.log(1-prob_X)
         log_prob = T.sum(log_prob, axis=1)
+        #log_prob += prior_strength * (n_Y * T.log(1-sparsity) + T.sum(Y, axis=1)*T.log(sparsity/(1-sparsity)))
 
         return log_prob
 

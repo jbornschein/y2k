@@ -67,7 +67,7 @@ def run_experiment(args):
             q_layer(n_X=n_Y, n_Y=n_X)
         )
         n_X = n_Y
-    p_layers.append( p_top(n_X=n_X, clamp_sigmoid=True) )
+    p_layers.append( p_top(n_X=n_X, sparsity=args.sparse, prior_strength=args.strength, clamp_sigmoid=True) )
             
 
     model = LayerStack(
@@ -77,28 +77,28 @@ def run_experiment(args):
     model.setup()
 
     # Learning rate
-    def lr_tag(value, prefix):
+    def float_tag(value):
         exp = np.floor(np.log10(value))
         leading = ("%e"%value)[0]
-        return ["%s%s%d" % (prefix, leading, -exp)]
+        return "%s%s" % (leading, -exp)
 
     lr_base = args.lr
-    tags += lr_tag(lr_base, prefix="lr")
+    tags += "lr"+float_tag(lr_base)
     lr_p = args.lr_p
     lr_q = args.lr_q
     lr_s = args.lr_s
     if lr_p is None:
         lr_p = lr_base
     else:
-        tags += lr_tag(lr_p, prefix="lp")
+        tags += "lp"+float_tag(lr_p)
     if lr_q is None:
         lr_q = lr_base
     else:
-        tags += lr_tag(lr_q, prefix="lq")
+        tags += ["lq"+float_tag(lr_q)]
     if lr_s is None:
         lr_s = lr_base
     else:
-        tags += lr_tag(lr_s, prefix="ls")
+        tags += ["ls"+float_tag(lr_s)]
     
     # Samples
     n_samples = args.samples
@@ -111,6 +111,14 @@ def run_experiment(args):
     # Sleep interleave
     sleep_interleave = args.sleep_interleave
     tags += ["si%d"%sleep_interleave]
+
+    # Sparsitty
+    #sparsity = args.sparse
+    #tags += ["sp"+float_tag(sparsity)]
+
+    #prior_strength = args.strength
+    #tags += ["prior"+float_tag(prior_strength)]
+
 
     # Dataset
     if args.no_shuffle:
@@ -214,6 +222,8 @@ if __name__ == "__main__":
     parser.add_argument('--lr_p', default=None, type=float, help="p learning rate")
     parser.add_argument('--lr_q', default=None, type=float, help="wake-q-learing rate")
     parser.add_argument('--lr_s', default=None, type=float, help="sleep-q-learning rate")
+    parser.add_argument('--sparse', '--sp', default=0.1, type=float, help="")
+    parser.add_argument('--strength', default=0.0, type=float, help="")
     parser.add_argument('--default-split', '--ds', default=False, action="store_true", 
         help="Use default dataset split");
     parser.add_argument('p_model', default="SBN", 

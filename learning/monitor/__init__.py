@@ -15,8 +15,6 @@ from learning.model import Model
 from learning.hyperbase import HyperBase
 import learning.utils.datalog as datalog
 
-_logger = logging.getLogger("learning.monitor")
-
 #-----------------------------------------------------------------------------
 class Monitor(HyperBase):
     """ Abtract base class to monitor stuff """

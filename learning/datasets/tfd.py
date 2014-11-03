@@ -63,17 +63,17 @@ class TorontoFaceDataset(DataSet):
 
         if n_datapoints > 0:
             X = X[:n_datapoints]
-            Y = Y[:n_datapoints]
+            #Y = Y[:n_datapoints]
         else:
             n_datapoints = X.shape[0]
 
         # Normalize to 0..1 
-        X = (X / 255.).astype(floatX)
+        X = (X / 255. - 0.5).astype(floatX)
 
         # Flatten images
         X = X.reshape([n_datapoints, -1])
 
         self.n_datapoints = n_datapoints
         self.X = X
-        self.Y = None
+        self.Y = np.zeros(n_datapoints)
 

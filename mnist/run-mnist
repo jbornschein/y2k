@@ -21,6 +21,7 @@ def run_experiment(args):
     from learning.termination import EarlyStopping
     from learning.monitor import MonitorLL, DLogModelParams, SampleFromP
     from learning.monitor.bootstrap import BootstrapLL
+    from learning.monitor.saverepr import SaveRepr
     from learning.dataset import MNIST
     from learning.preproc import PermuteColumns, Binarize
 
@@ -177,6 +178,8 @@ def run_experiment(args):
         final_monitors=[
             MonitorLL(name="final-valiset", data=valiset, n_samples=[1, 5, 10, 25, 100, 500, 1000]),
             MonitorLL(name="final-testset", data=testset, n_samples=[1, 5, 10, 25, 100, 500, 1000]),
+            SaveRepr(name="valiset-repr", data=valiset, n_samples=20)
+            SaveRepr(name="testset-repr", data=testset, n_samples=20)
         ],
     )
 

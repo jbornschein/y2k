@@ -17,6 +17,19 @@ import learning.utils.datalog as datalog
 
 _logger = logging.getLogger("learning.monitor")
 
+# Small utility functions
+
+def reasonable_batch_size(n_samples):
+    """ Return a reasonable batch size assuming that for each batch entry 
+        n_samples will be processed
+    """
+    if K <= 10:
+        batch_size = 100
+    elif K <= 100:
+        batch_size = 10
+    else:
+        batch_size = 1
+
 #-----------------------------------------------------------------------------
 class Monitor(HyperBase):
     """ Abtract base class to monitor stuff """
@@ -135,13 +148,8 @@ class MonitorLL(Monitor):
 
         #
         for K in n_samples:
-            if K <= 10:
-                batch_size = 100
-            elif K <= 100:
-                batch_size = 10
-            else:
-                batch_size = 1
-    
+            batch_size = reasonable_batch_size(K)
+   
             n_layers = len(model.p_layers)
 
             L  = 0

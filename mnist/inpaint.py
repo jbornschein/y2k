@@ -12,6 +12,7 @@ from time import time
 import cPickle as pickle
 
 import numpy as np
+from numpy.random import RandomState
 
 import theano
 import theano.tensor as T
@@ -20,6 +21,28 @@ import ipdb
 from learning.rws  import LayerStack, f_replicate_batch
 
 logger = logging.getLogger()
+
+
+random_state = RandomState(2342)
+
+def make_block_mask(block_size):
+        border = 5
+        size_x, size_y = block_size, block_size
+    
+        pos_x = random_state.randint(low=border, high=(28-size_x-border))
+        pos_y = random_state.randint(low=border, high=(28-size_y-border))
+        
+        mask = np.zeros( (28, 28) )
+        mask[pos_y:(pos_y+size_y),pos_x:(pos_x+size_x)] = 1.
+        mask = mask.reshape([1, 28*28])
+        return mask
+
+def make_random_mask(fraction):
+        mask = random_state.uniform(size=(28, 28) )
+        mask = 1.*(mask > (fraction))
+        mask = mask.reshape([1, 28*28])
+        return mask
+
 
 class Inpainter:
     def __init__(self, model, n_iterations=100, n_samples=1):
@@ -186,33 +209,23 @@ def run_inpainting(args):
         model.model_params_from_h5(h5, row=-1)
 
     #----------------------------------------------------------------------
+
     inpainter = Inpainter(model, n_iterations=100)
 
-
-    #def make_mask():
-    #    mask = np.zeros( (28, 28) )
-    #    mask[:,0:14] = 1.
-    #    mask = mask.reshape([1, 28*28])
-    #    return mask
-
-    def make_mask():
-        border = 5
-        size_x, size_y = 10, 10
-    
-        pos_x = np.random.randint(low=border, high=(28-size_x-border))
-        pos_y = np.random.randint(low=border, high=(28-size_y-border))
-        
-        mask = np.zeros( (28, 28) )
-        mask[pos_y:(pos_y+size_y),pos_x:(pos_x+size_x)] = 1.
-        mask = mask.reshape([1, 28*28])
-        return mask
-
-    def make_mask():
-        mask = np.random.uniform(size=(28, 28) )
-        mask = 1.*(mask > (1./3))
-        mask = mask.reshape([1, 28*28])
-        return mask
-        
+    if args.corruptor == "10x10":
+        make_mask = lambda : make_block_mask(10)
+    elif args.corruptor == "12x12": 
+        make_mask = lambda : make_block_mask(12)
+    elif args.corruptor == "15x15": 
+        make_mask = lambda : make_block_mask(15)
+    elif args.corruptor == "rnd13": 
+        make_mask = lambda : make_random_mask(1./3.)
+    elif args.corruptor == "rnd15": 
+        make_mask = lambda : make_random_mask(1./5.)
+    elif args.corruptor == "rnd110": 
+        make_mask = lambda : make_random_mask(1./10.)
+    else:
+        raise ValueError("Unknown corruptor argument: %s" % args.corruptor)
     
     #----------------------------------------------------------------------
     if args.viz:
@@ -286,6 +299,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--verbose', '-v', action='count')
     parser.add_argument('--viz', action='store_true', default=False)
+    parser.add_argument('--corruptor', type=str, default="10x10")
     parser.add_argument('--shuffle', action='store_true', default=False)
     parser.add_argument('--iterations', type=int, default=100)
     parser.add_argument('--samples', type=int, default=1)

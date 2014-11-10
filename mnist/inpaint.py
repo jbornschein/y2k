@@ -198,7 +198,7 @@ def run_inpainting(args):
     def make_mask():
         border = 5
         size_x, size_y = 10, 10
-
+    
         pos_x = np.random.randint(low=border, high=(28-size_x-border))
         pos_y = np.random.randint(low=border, high=(28-size_y-border))
         

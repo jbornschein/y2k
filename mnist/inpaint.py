@@ -216,6 +216,8 @@ def run_inpainting(args):
         make_mask = lambda : make_block_mask(10)
     elif args.corruptor == "12x12": 
         make_mask = lambda : make_block_mask(12)
+    elif args.corruptor == "14x14": 
+        make_mask = lambda : make_block_mask(14)
     elif args.corruptor == "15x15": 
         make_mask = lambda : make_block_mask(15)
     elif args.corruptor == "rnd13": 

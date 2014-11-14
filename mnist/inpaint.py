@@ -45,7 +45,7 @@ def make_random_mask(fraction):
 
 
 class Inpainter:
-    def __init__(self, model, n_iterations=100, n_samples=1):
+    def __init__(self, model, n_iterations=100, n_samples=100):
         self.model = model
         self.n_iterations = n_iterations
         self.n_samples = n_samples
@@ -66,33 +66,32 @@ class Inpainter:
         X_batch = T.fmatrix('X_batch')
         mask = T.fmatrix('mask')
 
-        #batch_size = X_batch.shape[0]
+        log_px_, _, _, _, _, _, _ = model.log_likelihood(X_batch, None, n_samples=n_samples)
+        batch_size = X_batch.shape[0]
 
-        def f_recons_iteration(prev_X, m, X):
+        #def f_recons_iteration(prev_X, m, X):
+        def f_recons_iteration(prev_X, prev_log_px, m, X):
             # Reconstruct with lowest layer
             h1, _ = q_layers[0].sample(prev_X)
             X_recons, _ = p_layers[0].sample(h1)
             X_recons = f_corrupt(m, X, X_recons)
-            return X_recons
+            #return X_recons
+            log_px, _, _, _, _, _, _ = model.log_likelihood(X, None, n_samples=n_samples)
+            return X_recons, log_px
 
-        X_recons, updates = theano.scan(
+        (X_recons, log_px), updates = theano.scan(
+        #X_recons, updates = theano.scan(
             fn=f_recons_iteration, 
-            outputs_info=[T.zeros_like(X_batch)],
+            #outputs_info=T.zeros_like(X_batch),
+            outputs_info=[T.zeros_like(X_batch), T.zeros_like(log_px_) ],
             non_sequences=(mask, X_batch),
             n_steps=n_iterations
         )
 
-        X_recons = X_recons[-1]
+        #X_recons = X_recons[-1]
+        idx = T.argmax(log_px, axis=0)
+        X_recons = X_recons[idx, T.arange(batch_size), :]
 
-        # Evaluate reconstructions
-        #log_px, _, _, _, _, _, _ = model.log_likelihood(X_recons, n_samples=n_samples)
-        #X_recons = X_recons.reshape( (batch_size, n_samples, n_X) )
-        #log_px = log_px.reshape( (batch_size, n_samples) )
-        #best = T.argmax(log_px, axis=1)
-        #X_recons = X_recons[T.arange(batch_size), best].reshape( [batch_size, n_X] )
-        #X_recons = X_recons[:, 0].reshape( [batch_size, n_X] )
-        
-        
         logger.info("Compiling do_inpainting...") 
         self.do_inpainting = theano.function(
             inputs=[X_batch, mask, n_iterations], 
@@ -113,6 +112,8 @@ class Inpainter:
             n_iterations = self.n_iterations
 
         X_recons = self.do_inpainting(X_batch, mask, n_iterations)
+
+        #ipdb.set_trace()
 
         return X_recons
 
@@ -210,7 +211,7 @@ def run_inpainting(args):
 
     #----------------------------------------------------------------------
 
-    inpainter = Inpainter(model, n_iterations=100)
+    inpainter = Inpainter(model, n_iterations=200, n_samples=100)
 
     if args.corruptor == "10x10":
         make_mask = lambda : make_block_mask(10)
@@ -258,8 +259,10 @@ def run_inpainting(args):
 
     #----------------------------------------------------------------------
 
-    with h5py.File(args.output, "w") as h5:
-        batch_size = 100
+        
+    with h5py.File(args.output, "w", compression="gzip") as h5:
+        logger.info("Writing output to %s" % args.output)
+        batch_size = 500
 
         for ds_name in ('train', 'valid', 'test'):
             logger.info("Loading dataset %s ..." % ds_name)
@@ -268,10 +271,10 @@ def run_inpainting(args):
             X, Y = dataset.X, dataset.Y
             X, Y = dataset.preproc(X, Y)
 
-            X_ = h5.create_dataset('%s-X' % ds_name, X.shape, X.dtype)
-            Y_ = h5.create_dataset('%s-Y' % ds_name, Y.shape, Y.dtype)
-            X_corr_ = h5.create_dataset('%s-X-corr' % ds_name, X.shape, X.dtype)
-            X_recons_ = h5.create_dataset('%s-X-recons' % ds_name, X.shape, X.dtype)
+            X_ = h5.create_dataset('%s-X' % ds_name, X.shape, X.dtype, compression="gzip")
+            Y_ = h5.create_dataset('%s-Y' % ds_name, Y.shape, Y.dtype, compression="gzip")
+            X_corr_ = h5.create_dataset('%s-X-corr' % ds_name, X.shape, X.dtype, compression="gzip")
+            X_recons_ = h5.create_dataset('%s-X-recons' % ds_name, X.shape, X.dtype, compression="gzip")
             
             for first in xrange(0, n_datapoints, batch_size):
                 last = first + batch_size

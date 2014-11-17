@@ -66,31 +66,46 @@ class Inpainter:
         X_batch = T.fmatrix('X_batch')
         mask = T.fmatrix('mask')
 
-        log_px_, _, _, _, _, _, _ = model.log_likelihood(X_batch, None, n_samples=n_samples)
         batch_size = X_batch.shape[0]
 
-        #def f_recons_iteration(prev_X, m, X):
+        #--------------------------------------------------------------------
+        def f_recons_iteration(prev_X, m, X):
+            # Reconstruct with lowest layer
+            h1, _ = q_layers[0].sample(prev_X)
+            X_recons, _ = p_layers[0].sample(h1)
+            X_recons = f_corrupt(m, X, X_recons)
+            return X_recons
+
+        X_recons, updates = theano.scan(
+            fn=f_recons_iteration, 
+            outputs_info=T.zeros_like(X_batch),
+            non_sequences=(mask, X_batch),
+            n_steps=n_iterations
+        )
+
+        X_recons = X_recons[-1]
+
+        #--------------------------------------------------------------------
+        log_px_, _, _, _, _, _, _ = model.log_likelihood(X_batch, None, n_samples=n_samples)
         def f_recons_iteration(prev_X, prev_log_px, m, X):
             # Reconstruct with lowest layer
             h1, _ = q_layers[0].sample(prev_X)
             X_recons, _ = p_layers[0].sample(h1)
             X_recons = f_corrupt(m, X, X_recons)
-            #return X_recons
             log_px, _, _, _, _, _, _ = model.log_likelihood(X, None, n_samples=n_samples)
             return X_recons, log_px
 
         (X_recons, log_px), updates = theano.scan(
-        #X_recons, updates = theano.scan(
             fn=f_recons_iteration, 
-            #outputs_info=T.zeros_like(X_batch),
             outputs_info=[T.zeros_like(X_batch), T.zeros_like(log_px_) ],
             non_sequences=(mask, X_batch),
             n_steps=n_iterations
         )
 
-        #X_recons = X_recons[-1]
         idx = T.argmax(log_px, axis=0)
         X_recons = X_recons[idx, T.arange(batch_size), :]
+
+        #--------------------------------------------------------------------
 
         logger.info("Compiling do_inpainting...") 
         self.do_inpainting = theano.function(

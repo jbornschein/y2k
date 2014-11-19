@@ -69,48 +69,55 @@ class Inpainter:
         batch_size = X_batch.shape[0]
 
         #--------------------------------------------------------------------
-        def f_recons_iteration(prev_X, m, X):
-            # Reconstruct with lowest layer
-            h1, _ = q_layers[0].sample(prev_X)
-            X_recons, _ = p_layers[0].sample(h1)
-            X_recons = f_corrupt(m, X, X_recons)
-            return X_recons
-
-        X_recons, updates = theano.scan(
-            fn=f_recons_iteration, 
-            outputs_info=T.zeros_like(X_batch),
-            non_sequences=(mask, X_batch),
-            n_steps=n_iterations
-        )
-
-        X_recons = X_recons[-1]
-
+        #        def f_recons_iteration(prev_X, m, X):
+        #            # Reconstruct with lowest layer
+        #            h1, _ = q_layers[0].sample(prev_X)
+        #            X_recons, _ = p_layers[0].sample(h1)
+        #            X_recons = f_corrupt(m, X, X_recons)
+        #            return X_recons
+        #
+        #        X_recons, updates = theano.scan(
+        #            fn=f_recons_iteration, 
+        #            outputs_info=T.zeros_like(X_batch),
+        #            non_sequences=(mask, X_batch),
+        #            n_steps=n_iterations
+        #        )
+        #
+        #        X_recons = X_recons[-1]
+        #
         #--------------------------------------------------------------------
+
         log_px_, _, _, _, _, _, _ = model.log_likelihood(X_batch, None, n_samples=n_samples)
         def f_recons_iteration(prev_X, prev_log_px, m, X):
-            # Reconstruct with lowest layer
             h1, _ = q_layers[0].sample(prev_X)
             X_recons, _ = p_layers[0].sample(h1)
             X_recons = f_corrupt(m, X, X_recons)
             log_px, _, _, _, _, _, _ = model.log_likelihood(X, None, n_samples=n_samples)
+
+            #X_recons = T.switch(
+            #    T.shape_padright(prev_log_px > log_px),
+            #    prev_X, X_recons
+            #)
+            log_px = T.maximum(prev_log_px, log_px)
+    
             return X_recons, log_px
 
         (X_recons, log_px), updates = theano.scan(
             fn=f_recons_iteration, 
-            outputs_info=[T.zeros_like(X_batch), T.zeros_like(log_px_) ],
+            outputs_info=[X_batch, log_px_],
             non_sequences=(mask, X_batch),
             n_steps=n_iterations
         )
 
-        idx = T.argmax(log_px, axis=0)
-        X_recons = X_recons[idx, T.arange(batch_size), :]
+        #idx = T.argmax(log_px, axis=0)
+        #X_recons = X_recons[idx, T.arange(batch_size), :]
 
         #--------------------------------------------------------------------
 
         logger.info("Compiling do_inpainting...") 
         self.do_inpainting = theano.function(
             inputs=[X_batch, mask, n_iterations], 
-            outputs=X_recons,
+            outputs=[X_recons, log_px],
             updates=updates,
             allow_input_downcast=True,
         )
@@ -126,11 +133,9 @@ class Inpainter:
         if n_iterations is None:
             n_iterations = self.n_iterations
 
-        X_recons = self.do_inpainting(X_batch, mask, n_iterations)
+        X_recons, log_px = self.do_inpainting(X_batch, mask, n_iterations)
 
-        #ipdb.set_trace()
-
-        return X_recons
+        return X_recons.transpose([1,0,2]), log_px.T
 
 def run_monitors(model, monitors):
     for m in monitors:
@@ -226,7 +231,8 @@ def run_inpainting(args):
 
     #----------------------------------------------------------------------
 
-    inpainter = Inpainter(model, n_iterations=200, n_samples=100)
+    n_iterations = 10000
+    inpainter = Inpainter(model, n_iterations=n_iterations, n_samples=100)
 
     if args.corruptor == "10x10":
         make_mask = lambda : make_block_mask(10)
@@ -247,34 +253,72 @@ def run_inpainting(args):
     
     #----------------------------------------------------------------------
     if args.viz:
-        idx = [10, 120, 1020, 2020, 3020, 4020, 5020, 6020, 7020, 8020, 9020]
+        from tile import tile_raster_images, pil_from_ndarray
+        #idx = [10, 1020, 2020, 3020, 4025, 5020, 6020, 7020, 8020, 9020]
+        #idx = [10, 2021, 3021, 4025, 5020, 6021, 8021, 9020]
+        idx = [10, 2021, 3021, 4025, 5020, 6021]
+        #idx = [10, 120, 1020, 4025, 8025, 9020]
+        #idx = [10, 120, 1020] #, 8020, 9020]
         batch_size = len(idx)
+        n_repeat = 10
 
         logger.info("Loading dataset...")
         testset = MNIST(which_set='test', preproc=preproc)
 
         X = testset.X[idx, :]
-        X, Y = testset.preproc(X, None)
+        Y = testset.Y[idx, :]
+        X_batch, Y_batch = testset.preproc(X, Y)
+        X_batch = np.repeat(X_batch, n_repeat, axis=0)
+
+        mask = make_mask()
+        X_corruped = inpainter.corrupt(mask, X_batch, np.zeros_like(X_batch))
+        X_recons, log_px = inpainter.inpaint(X_corruped, mask)
+
+        X_corruped = X_corruped + 0.5*mask
+        X_corruped = X_corruped.reshape([batch_size, n_repeat, 28*28])
+        X_recons = X_recons.reshape([batch_size, n_repeat, n_iterations, 28*28])
+        log_px = log_px.reshape([batch_size, n_repeat, n_iterations])
+        
+        print("log_px: %f, %f, %f" % (log_px[:,:,-1].min(), log_px[:,:,-1].mean(), log_px[:,:,-1].max()))
+
+        for i in xrange(100, n_iterations, 100):
+            I = np.zeros( [batch_size, n_repeat+1, 28*28] )
+            for n in xrange(batch_size):
+                I[n, 0, :] = X_corruped[n, 0]
+                for c in xrange(n_repeat):
+                    idx = log_px[n, c, :i].argmax()
+
+                    I[n, c+1, :] = X_recons[n, c, idx, :]
+            I = I.reshape([batch_size*(n_repeat+1), 28*28])
+            I = tile_raster_images(I, [28,28], [batch_size, n_repeat+1] )
+            img = pil_from_ndarray(I)
+            img.save("recons-%04d.gif" % i)
 
         pylab.figure()
-        for r in xrange(batch_size):
-            pylab.subplot(batch_size, n_samples+2, (n_samples+2)*r+1)
-            pylab.axis('off'); pylab.imshow(X[r].reshape((28,28)), interpolation='nearest')
-            pylab.subplot(batch_size, n_samples+2, (n_samples+2)*r+2)
-            pylab.axis('off'); pylab.imshow(X_corruped[r].reshape((28,28)), interpolation='nearest')
-    
-            X_recons = X_corruped.copy()
-            for s in xrange(n_samples):
-                X_recons = inpainter.inpaint(X_corruped, mask, n_iterations=10*s+1)
-
-                pylab.subplot(batch_size, n_samples+2, (n_samples+2)*r+s+3)
-                pylab.axis('off'); pylab.imshow(X_recons[r].reshape((28,28)), interpolation='nearest')
+        for i in xrange(batch_size):
+            for r in xrange(n_repeat):
+                pylab.plot(log_px[i,r,:])
         pylab.show(block=True)
+        pylab.ylim([-130, -20])
+
+        #
+        #pylab.figure()
+        #for r in xrange(batch_size):
+        #    #pylab.subplot(batch_size, repeat+1, (n_figs+1)*r+1)
+        #    #pylab.axis('off'); pylab.imshow(X_batch[r].reshape((28,28)), interpolation='nearest')
+        #    pylab.subplot(batch_size, n_repeat+1, (n_figs+1)*r+2)
+        #    pylab.axis('off'); pylab.imshow(X_corruped[r,0].reshape((28,28)), interpolation='nearest')
+        # 
+        #    for c in xrange(1, n_repeat+1):
+        #        #idx = c*(n_iterations / n_figs) - 1
+        #        pylab.subplot(batch_size, n_figs+2, (n_figs+2)*r+s+3)
+        #        pylab.axis('off'); pylab.imshow(X_recons[r,idx].reshape((28,28)), interpolation='nearest')
+
+        #pylab.show(block=True)
         exit(0)
 
     #----------------------------------------------------------------------
 
-        
     with h5py.File(args.output, "w", compression="gzip") as h5:
         logger.info("Writing output to %s" % args.output)
         batch_size = 500

@@ -319,7 +319,8 @@ class LayerStack(Model):
 
         for nl, layer in enumerate(self.q_layers):
             for name, shvar in iteritems(layer.get_model_params()):
-                gradients[shvar] = lr_q[nl] * T.grad(cost_q, shvar, consider_constant=[w])
+                gradients[shvar]  =  0.5 * lr_p[nl] * T.grad(cost_p, shvar, consider_constant=[w]) \
+                                   + 0.5 * lr_q[nl] * T.grad(cost_q, shvar, consider_constant=[w])
 
         return batch_log_PX, gradients
 

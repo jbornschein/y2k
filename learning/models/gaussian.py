@@ -17,7 +17,6 @@ _logger = logging.getLogger(__name__)
 floatX = theano.config.floatX
 
 
-
 class FixedDiagonalGaussianTop(TopModule):
     """ DiagonalGaussian top layer """ 
     def __init__(self, **hyper_params):
@@ -135,11 +134,15 @@ class DiagonalGaussianTop(TopModule):
         n_X, = self.get_hyper_params(['n_X'])
         mu, log_sigma2 = self.get_model_params(['mu', 'log_sigma2'])
 
-        # Samples from multivariate diagonal Gaussian
-        X = theano_rng.normal(
+        # Sample from mean-zeros std.-one Gaussian 
+        eps = theano_rng.normal(
                 size=(n_samples, n_X), 
-                avg=mu, std=T.exp(0.5*log_sigma2),
-                dtype=floatX)
+                avg=0., std=1., dtype=floatX)
+
+        self.random_source = [eps]
+
+        # ... and sca1le/translate samples
+        X = eps * T.exp(0.5*log_sigma2) + mu
 
         return X, self.log_prob(X)
 
@@ -226,15 +229,21 @@ class DiagonalGaussian(Module):
 
         n_samples = Y.shape[0]
 
+        # Sample from mean-zeros std.-one Gaussian 
+        eps = theano_rng.normal(
+                size=(n_samples, n_X), 
+                avg=0., std=1., dtype=floatX)
+
+        self.random_source = [eps]
+
+        # ... and sca1le/translate samples
+
         # Compute gaussian params...
         h = T.tanh(T.dot(Y, W3) + b3)
         mu = T.dot(h, W1) + b1
         log_sigma2 = T.dot(h, W2) + b2
 
-        X = theano_rng.normal(
-                size=(n_samples, n_X), 
-                avg=mu, std=T.exp(0.5*log_sigma2),
-                dtype=floatX)
+        X = eps * T.exp(0.5*log_sigma2) + mu
 
         return X, self.log_prob(X, Y)
 

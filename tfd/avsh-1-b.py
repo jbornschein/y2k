@@ -26,6 +26,7 @@ p_layers=[
         n_X=n_vis,
         n_Y=500,
         n_hid=[],
+        final_tanh=True
     ),
     DiagonalGaussian(
         n_X=500,
@@ -47,6 +48,7 @@ q_layers=[
         n_X=500,
         n_Y=500,
         n_hid=[],
+        final_tanh=True
     ),
 ]
 
@@ -62,7 +64,7 @@ trainer = Trainer(
     learning_rate_q=0.0,
     #learning_rate_s=1e-6,
     learning_rate_s=1e-6,
-    weight_decay=1e-4,
+    weight_decay=1e-6,
     batch_size=25,
     dataset=trainset, 
     model=model,

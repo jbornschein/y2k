@@ -170,6 +170,7 @@ class DiagonalGaussian(Module):
         self.register_hyper_param('n_Y', help='no. upper-layer binary variables')
         self.register_hyper_param('n_hid', help='no. hidden variables')
         self.register_hyper_param('log_sigma2_min', help='log(sigma**2) cutoff', default=-5.)
+        self.register_hyper_param('final_tanh', help='', default=False)
     
         self.set_hyper_params(hyper_params)
 
@@ -232,6 +233,8 @@ class DiagonalGaussian(Module):
 
         # ... and Gaussian params
         mu = T.dot(ai, W_mu) + b_mu
+        if self.final_tanh:
+            mu = T.tanh(mu)
         log_sigma2 = T.dot(ai, W_ls) + b_ls
         log_sigma2 = T.maximum(log_sigma2, self.log_sigma2_min)
 
@@ -273,6 +276,8 @@ class DiagonalGaussian(Module):
 
         # ... and Gaussian params
         mu = T.dot(ai, W_mu) + b_mu
+        if self.final_tanh:
+            mu = T.tanh(mu)
         log_sigma2 = T.dot(ai, W_ls) + b_ls
         log_sigma2 = T.maximum(log_sigma2, self.log_sigma2_min)
 
@@ -316,5 +321,7 @@ class DiagonalGaussian(Module):
 
         # ... and Gaussian params
         mu = T.dot(ai, W_mu) + b_mu
+        if self.final_tanh:
+            mu = T.tanh(mu)
 
         return mu

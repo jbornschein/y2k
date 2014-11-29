@@ -156,9 +156,12 @@ class DiagonalGaussian(Module):
 
         x ~ DiagonalGaussian(x; \mu, \sigma)
 
-        \mu           = W1 h + b1
-        \log \sigma^2 = W2 h + b2
-           with     h = tanh(W3 y + b3)
+        \mu           = W_mu a0 + b_mu
+        \log \sigma^2 = W_ls a0 + b_ls
+           with    a0 = tanh(W0 a1 + b0)    (dimension n_hid[0])
+            and    a1 = tanh(W1 a2 + b1)    (dimension n_hid[1])
+                      ...
+                   an = tanh(Wn  y  + bn)     (dimension n_hid[n])  
     """
     def __init__(self, **hyper_params):
         super(DiagonalGaussian, self).__init__()
@@ -166,16 +169,41 @@ class DiagonalGaussian(Module):
         self.register_hyper_param('n_X', help='no. lower-layer binary variables')
         self.register_hyper_param('n_Y', help='no. upper-layer binary variables')
         self.register_hyper_param('n_hid', help='no. hidden variables')
-
-        # MLP parametrization
-        self.register_model_param('W1', default=lambda: default_weights(self.n_hid, self.n_X))
-        self.register_model_param('W2', default=lambda: default_weights(self.n_hid, self.n_X))
-        self.register_model_param('W3', default=lambda: default_weights(self.n_Y, self.n_hid))
-        self.register_model_param('b1', default=lambda: np.zeros(self.n_X))
-        self.register_model_param('b2', default=lambda: np.zeros(self.n_X))
-        self.register_model_param('b3', default=lambda: np.zeros(self.n_hid))
-
+        self.register_hyper_param('log_sigma2_min', help='log(sigma**2) cutoff', default=-5.)
+    
         self.set_hyper_params(hyper_params)
+
+        # sanitize hyper params
+        if isinstance(self.n_hid, int):
+            self.n_hid = (self.n_hid, )
+        if isinstance(self.n_hid, list):
+            self.n_hid = tuple(self.n_hid)
+        self.n_layers = len(self.n_hid)
+        
+        hidden_size = self.n_hid + (self.n_Y,)
+        for i in reversed(xrange(self.n_layers)):
+            W_name = "W%d" % i
+            b_name = "b%d" % i
+
+            n_upper = hidden_size[i+1]
+            n_lower = hidden_size[i]
+
+            def create_W_init(n_upper, n_lower):
+                return lambda: default_weights(n_upper, n_lower)
+            def create_b_init(n_lower):
+                return lambda: np.zeros(n_lower)
+            
+            self.register_model_param(W_name, default=create_W_init(n_upper, n_lower))
+            self.register_model_param(b_name, default=create_b_init(n_lower))
+
+        # lowers layer parametrization... higher layers will be parameterized in self.setup()
+        self.register_model_param('W_mu', default=lambda: default_weights(hidden_size[0], self.n_X))
+        self.register_model_param('W_ls', default=lambda: default_weights(hidden_size[0], self.n_X))
+        self.register_model_param('b_mu', default=lambda: np.zeros(self.n_X))
+        self.register_model_param('b_ls', default=lambda: np.zeros(self.n_X))
+
+    def setup(self):
+        super(DiagonalGaussian, self).setup()
 
     def log_prob(self, X, Y):
         """ Evaluate the log-probability for the given samples.
@@ -192,13 +220,20 @@ class DiagonalGaussian(Module):
         log_p:  T.tensor
             log-probabilities for the samples in X and Y
         """
-        W1, W2, W3 = self.get_model_params(['W1', 'W2', 'W3'])
-        b1, b2, b3 = self.get_model_params(['b1', 'b2', 'b3'])
+        W_mu, W_ls = self.get_model_params(['W_mu', 'W_ls'])
+        b_mu, b_ls = self.get_model_params(['b_mu', 'b_ls'])
 
-        # Compute gaussian params...
-        h = T.tanh(T.dot(Y, W3) + b3)
-        mu = T.dot(h, W1) + b1
-        log_sigma2 = T.dot(h, W2) + b2
+        # Compute hidden layer activations...
+        ai = Y
+        for i in reversed(range(self.n_layers)):
+            Wi = self.get_model_param('W%d'%i)
+            bi = self.get_model_param('b%d'%i)
+            ai = T.tanh(T.dot( ai, Wi) + bi)
+
+        # ... and Gaussian params
+        mu = T.dot(ai, W_mu) + b_mu
+        log_sigma2 = T.dot(ai, W_ls) + b_ls
+        log_sigma2 = T.maximum(log_sigma2, self.log_sigma2_min)
 
         # Calculate multivariate diagonal Gaussian
         log_prob =  -0.5*T.log(2*np.pi) - 0.5*log_sigma2 -0.5*(X-mu)**2 / T.exp(log_sigma2)
@@ -224,25 +259,30 @@ class DiagonalGaussian(Module):
         """
         n_X, = self.get_hyper_params(['n_X'])
 
-        W1, W2, W3 = self.get_model_params(['W1', 'W2', 'W3'])
-        b1, b2, b3 = self.get_model_params(['b1', 'b2', 'b3'])
+        W_mu, W_ls = self.get_model_params(['W_mu', 'W_ls'])
+        b_mu, b_ls = self.get_model_params(['b_mu', 'b_ls'])
 
         n_samples = Y.shape[0]
+
+        # Compute hidden layer activations...
+        ai = Y
+        for i in reversed(range(self.n_layers)):
+            Wi = self.get_model_param('W%d'%i)
+            bi = self.get_model_param('b%d'%i)
+            ai = T.tanh(T.dot(ai, Wi) + bi)
+
+        # ... and Gaussian params
+        mu = T.dot(ai, W_mu) + b_mu
+        log_sigma2 = T.dot(ai, W_ls) + b_ls
+        log_sigma2 = T.maximum(log_sigma2, self.log_sigma2_min)
 
         # Sample from mean-zeros std.-one Gaussian 
         eps = theano_rng.normal(
                 size=(n_samples, n_X), 
                 avg=0., std=1., dtype=floatX)
-
         self.random_source = [eps]
 
-        # ... and sca1le/translate samples
-
-        # Compute gaussian params...
-        h = T.tanh(T.dot(Y, W3) + b3)
-        mu = T.dot(h, W1) + b1
-        log_sigma2 = T.dot(h, W2) + b2
-
+        # ... and scale/translate samples
         X = eps * T.exp(0.5*log_sigma2) + mu
 
         return X, self.log_prob(X, Y)
@@ -262,291 +302,19 @@ class DiagonalGaussian(Module):
         """
         n_X, = self.get_hyper_params(['n_X'])
 
-        W1, W2, W3 = self.get_model_params(['W1', 'W2', 'W3'])
-        b1, b2, b3 = self.get_model_params(['b1', 'b2', 'b3'])
+        W_mu, W_ls = self.get_model_params(['W_mu', 'W_ls'])
+        b_mu, b_ls = self.get_model_params(['b_mu', 'b_ls'])
 
         n_samples = Y.shape[0]
 
-        # Compute gaussian params...
-        h = T.tanh(T.dot(Y, W3) + b3)
-        mu = T.dot(h, W1) + b1
+        # Compute hidden layer activations...
+        ai = Y
+        for i in reversed(range(self.n_layers)):
+            Wi = self.get_model_param('W%d'%i)
+            bi = self.get_model_param('b%d'%i)
+            ai = T.tanh(T.dot( ai, Wi) + bi)
+
+        # ... and Gaussian params
+        mu = T.dot(ai, W_mu) + b_mu
 
         return mu
-
-
-#----------------------------------------------------------------------------
-
-class DiagonalGaussianAA(Module):
-    """
-    A stochastic diagonal gaussian parameterized by
-
-    P(x | y):
-
-        x ~ DiagonalGaussian(x; \mu, \sigma)
-
-        \mu           = W1 a1 + b1
-        \log \sigma^2 = W2 a1 + b2
-           with     a1 = tanh(W3 a2 + b3)    (dimension n_hid1)
-           with     a2 = tanh(W4 y + b4)     (dimension n_hid2)
-    """
-    def __init__(self, **hyper_params):
-        super(DiagonalGaussianAA, self).__init__()
-
-        self.register_hyper_param('n_X', help='no. lower-layer binary variables')
-        self.register_hyper_param('n_Y', help='no. upper-layer binary variables')
-        self.register_hyper_param('n_hid1', help='no. hidden variables')
-        self.register_hyper_param('n_hid2', help='no. hidden variables')
-
-        # MLP parametrization
-        self.register_model_param('W1', default=lambda: default_weights(self.n_hid1, self.n_X))
-        self.register_model_param('W2', default=lambda: default_weights(self.n_hid1, self.n_X))
-        self.register_model_param('W3', default=lambda: default_weights(self.n_hid2, self.n_hid1))
-        self.register_model_param('W4', default=lambda: default_weights(self.n_Y, self.n_hid2))
-        self.register_model_param('b1', default=lambda: np.zeros(self.n_X))
-        self.register_model_param('b2', default=lambda: np.zeros(self.n_X))
-        self.register_model_param('b3', default=lambda: np.zeros(self.n_hid1))
-        self.register_model_param('b4', default=lambda: np.zeros(self.n_hid2))
-
-        self.set_hyper_params(hyper_params)
-
-    def log_prob(self, X, Y):
-        """ Evaluate the log-probability for the given samples.
-
-        Parameters
-        ----------
-        Y:      T.tensor
-            samples from the upper layer
-        X:      T.tensor
-            samples from the lower layer
-
-        Returns
-        -------
-        log_p:  T.tensor
-            log-probabilities for the samples in X and Y
-        """
-        W1, W2, W3, W4 = self.get_model_params(['W1', 'W2', 'W3', 'W4'])
-        b1, b2, b3, b4 = self.get_model_params(['b1', 'b2', 'b3', 'b4'])
-
-        # Compute gaussian params...
-        a2 = T.tanh(T.dot( Y, W4) + b4)
-        a1 = T.tanh(T.dot(a2, W3) + b3)
-        mu = T.dot(a1, W1) + b1
-        log_sigma2 = T.dot(a1, W2) + b2
-
-        # Calculate multivariate diagonal Gaussian
-        log_prob =  -0.5*T.log(2*np.pi) - 0.5*log_sigma2 -0.5*(X-mu)**2 / T.exp(log_sigma2)
-        log_prob = T.sum(log_prob, axis=1)
-
-        return log_prob
-
-    def sample(self, Y):
-        """ Given samples from the upper layer Y, sample values from X
-            and return then together with their log probability.
-
-        Parameters
-        ----------
-        Y:      T.tensor
-            samples from the upper layer
-
-        Returns
-        -------
-        X:      T.tensor
-            samples from the lower layer
-        log_p:  T.tensor
-            log-posterior for the samples returned in X
-        """
-        n_X, = self.get_hyper_params(['n_X'])
-
-        W1, W2, W3, W4 = self.get_model_params(['W1', 'W2', 'W3', 'W4'])
-        b1, b2, b3, b4 = self.get_model_params(['b1', 'b2', 'b3', 'b4'])
-
-        n_samples = Y.shape[0]
-
-        # Sample from mean-zeros std.-one Gaussian 
-        eps = theano_rng.normal(
-                size=(n_samples, n_X), 
-                avg=0., std=1., dtype=floatX)
-
-        self.random_source = [eps]
-
-        # ... and sca1le/translate samples
-
-        # Compute gaussian params...
-        a2 = T.tanh(T.dot( Y, W4) + b4)
-        a1 = T.tanh(T.dot(a2, W3) + b3)
-        mu = T.dot(a1, W1) + b1
-        log_sigma2 = T.dot(a1, W2) + b2
-
-        X = eps * T.exp(0.5*log_sigma2) + mu
-
-        return X, self.log_prob(X, Y)
-
-    def sample_expected(self, Y):
-        """ Given samples from the upper layer Y, return 
-            the probability for the individual X elements
-
-        Parameters
-        ----------
-        Y:      T.tensor
-            samples from the upper layer
-
-        Returns
-        -------
-        X:      T.tensor
-        """
-        n_X, = self.get_hyper_params(['n_X'])
-
-        W1, W2, W3, W4 = self.get_model_params(['W1', 'W2', 'W3', 'W4'])
-        b1, b2, b3, b4 = self.get_model_params(['b1', 'b2', 'b3', 'b4'])
-
-
-        n_samples = Y.shape[0]
-
-        # Compute gaussian params...
-        a2 = T.tanh(T.dot( Y, W4) + b4)
-        a1 = T.tanh(T.dot(a2, W3) + b3)
-        mu = T.dot(a1, W1) + b1
-
-        return mu
-
-#-----------------------------------------------------------------------------
-
-class DiagonalGaussianAAA(Module):
-    """
-    A stochastic diagonal gaussian parameterized by
-
-    P(x | y):
-
-        x ~ DiagonalGaussian(x; \mu, \sigma)
-
-        \mu           = W1 a1 + b1
-        \log \sigma^2 = W2 a1 + b2
-           with     a1 = tanh(W3 a2 + b3)    (dimension n_hid1)
-           with     a2 = tanh(W4 y + b4)     (dimension n_hid2)
-           with     a3 = tanh(W5 y + b5)     (dimension n_hid3)
-    """
-    def __init__(self, **hyper_params):
-        super(DiagonalGaussianAAA, self).__init__()
-
-        self.register_hyper_param('n_X', help='no. lower-layer binary variables')
-        self.register_hyper_param('n_Y', help='no. upper-layer binary variables')
-        self.register_hyper_param('n_hid1', help='no. hidden variables')
-        self.register_hyper_param('n_hid2', help='no. hidden variables')
-        self.register_hyper_param('n_hid3', help='no. hidden variables')
-
-        # MLP parametrization
-        self.register_model_param('W1', default=lambda: default_weights(self.n_hid1, self.n_X))
-        self.register_model_param('W2', default=lambda: default_weights(self.n_hid1, self.n_X))
-        self.register_model_param('W3', default=lambda: default_weights(self.n_hid2, self.n_hid1))
-        self.register_model_param('W4', default=lambda: default_weights(self.n_hid3, self.n_hid2))
-        self.register_model_param('W5', default=lambda: default_weights(self.n_Y,    self.n_hid3))
-        self.register_model_param('b1', default=lambda: np.zeros(self.n_X))
-        self.register_model_param('b2', default=lambda: np.zeros(self.n_X))
-        self.register_model_param('b3', default=lambda: np.zeros(self.n_hid1))
-        self.register_model_param('b4', default=lambda: np.zeros(self.n_hid2))
-        self.register_model_param('b5', default=lambda: np.zeros(self.n_hid3))
-
-        self.set_hyper_params(hyper_params)
-
-    def log_prob(self, X, Y):
-        """ Evaluate the log-probability for the given samples.
-
-        Parameters
-        ----------
-        Y:      T.tensor
-            samples from the upper layer
-        X:      T.tensor
-            samples from the lower layer
-
-        Returns
-        -------
-        log_p:  T.tensor
-            log-probabilities for the samples in X and Y
-        """
-        W1, W2, W3, W4, W5 = self.get_model_params(['W1', 'W2', 'W3', 'W4', 'W5'])
-        b1, b2, b3, b4, b5 = self.get_model_params(['b1', 'b2', 'b3', 'b4', 'b5'])
-
-        # Compute gaussian params...
-        a3 = T.tanh(T.dot( Y, W5) + b5)
-        a2 = T.tanh(T.dot(a3, W4) + b4)
-        a1 = T.tanh(T.dot(a2, W3) + b3)
-        mu = T.dot(a1, W1) + b1
-        log_sigma2 = T.dot(a1, W2) + b2
-
-        # Calculate multivariate diagonal Gaussian
-        log_prob =  -0.5*T.log(2*np.pi) - 0.5*log_sigma2 -0.5*(X-mu)**2 / T.exp(log_sigma2)
-        log_prob = T.sum(log_prob, axis=1)
-
-        return log_prob
-
-    def sample(self, Y):
-        """ Given samples from the upper layer Y, sample values from X
-            and return then together with their log probability.
-
-        Parameters
-        ----------
-        Y:      T.tensor
-            samples from the upper layer
-
-        Returns
-        -------
-        X:      T.tensor
-            samples from the lower layer
-        log_p:  T.tensor
-            log-posterior for the samples returned in X
-        """
-        n_X, = self.get_hyper_params(['n_X'])
-
-        W1, W2, W3, W4, W5 = self.get_model_params(['W1', 'W2', 'W3', 'W4', 'W5'])
-        b1, b2, b3, b4, b5 = self.get_model_params(['b1', 'b2', 'b3', 'b4', 'b5'])
-
-        n_samples = Y.shape[0]
-
-        # Sample from mean-zeros std.-one Gaussian 
-        eps = theano_rng.normal(
-                size=(n_samples, n_X), 
-                avg=0., std=1., dtype=floatX)
-
-        self.random_source = [eps]
-
-        # ... and sca1le/translate samples
-
-        # Compute gaussian params...
-        a3 = T.tanh(T.dot( Y, W5) + b5)
-        a2 = T.tanh(T.dot(a3, W4) + b4)
-        a1 = T.tanh(T.dot(a2, W3) + b3)
-        mu = T.dot(a1, W1) + b1
-        log_sigma2 = T.dot(a1, W2) + b2
-
-        X = eps * T.exp(0.5*log_sigma2) + mu
-
-        return X, self.log_prob(X, Y)
-
-    def sample_expected(self, Y):
-        """ Given samples from the upper layer Y, return 
-            the probability for the individual X elements
-
-        Parameters
-        ----------
-        Y:      T.tensor
-            samples from the upper layer
-
-        Returns
-        -------
-        X:      T.tensor
-        """
-        n_X, = self.get_hyper_params(['n_X'])
-
-        W1, W2, W3, W4, W5 = self.get_model_params(['W1', 'W2', 'W3', 'W4', 'W5'])
-        b1, b2, b3, b4, b5 = self.get_model_params(['b1', 'b2', 'b3', 'b4', 'b5'])
-
-        n_samples = Y.shape[0]
-
-        # Compute gaussian params...
-        a3 = T.tanh(T.dot( Y, W5) + b5)
-        a2 = T.tanh(T.dot(a3, W4) + b4)
-        a1 = T.tanh(T.dot(a2, W3) + b3)
-        mu = T.dot(a1, W1) + b1
-
-        return mu
-

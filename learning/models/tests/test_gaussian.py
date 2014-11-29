@@ -26,6 +26,18 @@ class TestDiagonalGaussian(RWSLayerTest, unittest.TestCase):
         self.layer = DiagonalGaussian(
                         n_X=16,
                         n_Y=8,
-                        n_hid=20,
+                        n_hid=(),
                     )
         self.layer.setup()
+
+class TestDeepDiagonalGaussian(RWSLayerTest, unittest.TestCase):
+    def setUp(self):
+        self.n_samples = 10
+        self.layer = DiagonalGaussian(
+                        n_X=16,
+                        n_Y=8,
+                        n_hid=[10, 20],
+                    )
+        self.layer.setup()
+
+

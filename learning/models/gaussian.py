@@ -169,8 +169,9 @@ class DiagonalGaussian(Module):
         self.register_hyper_param('n_X', help='no. lower-layer binary variables')
         self.register_hyper_param('n_Y', help='no. upper-layer binary variables')
         self.register_hyper_param('n_hid', help='no. hidden variables')
-        self.register_hyper_param('log_sigma2_min', help='log(sigma**2) cutoff', default=-5.)
+        self.register_hyper_param('log_sigma2_min', help='log(sigma**2) cutoff', default=-np.inf)
         self.register_hyper_param('final_tanh', help='', default=False)
+        self.register_hyper_param('initial_tanh', help='', default=False)
     
         self.set_hyper_params(hyper_params)
 
@@ -226,6 +227,8 @@ class DiagonalGaussian(Module):
 
         # Compute hidden layer activations...
         ai = Y
+        if self.initial_tanh:
+            ai = T.tanh(ai)
         for i in reversed(range(self.n_layers)):
             Wi = self.get_model_param('W%d'%i)
             bi = self.get_model_param('b%d'%i)
@@ -269,6 +272,8 @@ class DiagonalGaussian(Module):
 
         # Compute hidden layer activations...
         ai = Y
+        if self.initial_tanh:
+            ai = T.tanh(ai)
         for i in reversed(range(self.n_layers)):
             Wi = self.get_model_param('W%d'%i)
             bi = self.get_model_param('b%d'%i)
@@ -314,6 +319,8 @@ class DiagonalGaussian(Module):
 
         # Compute hidden layer activations...
         ai = Y
+        if self.initial_tanh:
+            ai = T.tanh(ai)
         for i in reversed(range(self.n_layers)):
             Wi = self.get_model_param('W%d'%i)
             bi = self.get_model_param('b%d'%i)

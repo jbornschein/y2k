@@ -13,6 +13,8 @@ from learning.models.gaussian  import DiagonalGaussian, DiagonalGaussianTop, Fix
 
 n_vis = 48*48
 
+log_sigma2_min = -2.
+
 preproc = [QuantNoise()]
 #preproc = []
 
@@ -24,31 +26,37 @@ testset = TorontoFaceDataset(which_set='test', preproc=preproc)
 p_layers=[
     DiagonalGaussian(
         n_X=n_vis,
-        n_Y=500,
+        n_Y=200,
         n_hid=[],
-        final_tanh=True
+        final_tanh=False,
+        log_sigma2_min=log_sigma2_min,
     ),
     DiagonalGaussian(
-        n_X=500,
-        n_Y=500,
+        n_X=200,
+        n_Y=100,
         n_hid=[],
+        final_tanh=True,
+        log_sigma2_min=log_sigma2_min,
     ),
     FixedDiagonalGaussianTop( 
-        n_X=500,
+        n_X=100,
     ),
 ]
 
 q_layers=[
     DiagonalGaussian(
         n_Y=n_vis,
-        n_X=500,
+        n_X=200,
         n_hid=[],
+        final_tanh=True,
+        log_sigma2_min=log_sigma2_min,
     ),
     DiagonalGaussian(
-        n_X=500,
-        n_Y=500,
+        n_X=100,
+        n_Y=200,
         n_hid=[],
-        final_tanh=True
+        final_tanh=False,
+        log_sigma2_min=log_sigma2_min,
     ),
 ]
 
@@ -64,7 +72,7 @@ trainer = Trainer(
     learning_rate_q=0.0,
     #learning_rate_s=1e-6,
     learning_rate_s=1e-6,
-    weight_decay=1e-6,
+    weight_decay=0.0,
     batch_size=25,
     dataset=trainset, 
     model=model,

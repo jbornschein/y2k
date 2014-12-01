@@ -24,19 +24,19 @@ testset = TorontoFaceDataset(which_set='test', preproc=preproc)
 p_layers=[
     DiagonalGaussian(
         n_X=n_vis,
-        n_Y=500,
-        n_hid=[500],
+        n_Y=100,
+        n_hid=[200],
     ),
     FixedDiagonalGaussianTop( 
-        n_X=500,
+        n_X=100,
     ),
 ]
 
 q_layers=[
     DiagonalGaussian(
         n_Y=n_vis,
-        n_X=500,
-        n_hid=[500],
+        n_X=100,
+        n_hid=[200],
     )
 ]
 

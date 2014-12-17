@@ -19,7 +19,7 @@ def run_experiment(args):
     from learning.experiment import Experiment
     from learning.training import Trainer
     from learning.termination import EarlyStopping
-    from learning.monitor import MonitorLL, DLogModelParams, SampleFromP
+    from learning.monitor import MonitorLL, DLogModelParams, SampleFromP, DetailedInference
     from learning.monitor.bootstrap import BootstrapLL
     from learning.monitor.saverepr import SaveRepr
     from learning.dataset import MNIST
@@ -143,11 +143,13 @@ def run_experiment(args):
         dataset = MNIST(which_set='train', preproc=binarize_preproc, n_datapoints=50000)
         valiset = MNIST(which_set='valid', preproc=binarize_preproc, n_datapoints=10000)
         testset = MNIST(fname="mnist_salakhutdinov.pkl.gz", which_set='test', preproc=preproc, n_datapoints=10000)
+        tinyset = MNIST(fname="mnist_salakhutdinov.pkl.gz", which_set='test', preproc=preproc, n_datapoints=100)
         tags += ["rb"]
     else:
         dataset = MNIST(fname="mnist_salakhutdinov.pkl.gz", which_set='train', preproc=preproc, n_datapoints=50000)
         valiset = MNIST(fname="mnist_salakhutdinov.pkl.gz", which_set='valid', preproc=preproc, n_datapoints=10000)
         testset = MNIST(fname="mnist_salakhutdinov.pkl.gz", which_set='test', preproc=preproc, n_datapoints=10000)
+        tinyset = MNIST(fname="mnist_salakhutdinov.pkl.gz", which_set='test', preproc=preproc, n_datapoints=100)
 
     if args.lookahead != 10:
         tags += ["lah%d" % args.lookahead]
@@ -180,6 +182,7 @@ def run_experiment(args):
             MonitorLL(name="final-testset", data=testset, n_samples=[1, 5, 10, 25, 100, 500, 1000]),
             SaveRepr(name="valiset-repr", data=valiset, n_samples=20)
             SaveRepr(name="testset-repr", data=testset, n_samples=20)
+            DetailedInference(data=testset, n_samples=100),
         ],
     )
 

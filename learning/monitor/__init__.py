@@ -13,6 +13,7 @@ import theano.tensor as T
 from learning.dataset import DataSet
 from learning.model import Model
 from learning.hyperbase import HyperBase
+from learning.models.rws import f_replicate_batch, f_logsumexp
 import learning.utils.datalog as datalog
 
 _logger = logging.getLogger("learning.monitor")
@@ -243,3 +244,101 @@ class SampleFromP(Monitor):
             expected_samples = outputs[0]
             self.dlog.append("L0_expected", expected_samples)
             
+#-----------------------------------------------------------------------------
+
+class DetailedInference(Monitor):
+    """ 
+    """
+    def __init__(self, data, n_samples=100, multi_map=10, name=None):
+        super(DetailedInference, self).__init__(name)
+
+        assert isinstance(data, DataSet)
+        self.dataset = data
+        self.X, self.Y = data.preproc(data.X, data.Y)
+
+        self.n_samples = n_samples
+
+    def compile(self, model):
+        assert isinstance(model, Model)
+        self.model = model
+        p_layers = model.p_layers
+        q_layers = model.q_layers
+        n_layers = len(model.p_layers)
+
+        dataset = self.dataset
+
+        self.logger.info("compiling do_detailed_inference")
+
+        X_batch = T.fmatrix('X_batch')
+        Y_batch = T.fmatrix('Y_batch')
+
+        batch_size = X_batch.shape[0]
+        n_samples = T.iscalar("n_samples")
+
+        X_preproced, Y_preproced = dataset.late_preproc(X_batch, Y_batch)
+        
+        # Get samples
+        X_batch_ = f_replicate_batch(X_preproced, n_samples)
+        samples, log_p, log_q = model.sample_q(X_batch_)
+
+        # Reshape and sum
+
+        log_p_all = T.zeros((batch_size, n_samples))
+        log_q_all = T.zeros((batch_size, n_samples))
+        for l in xrange(n_layers):
+            samples[l] = samples[l].reshape((batch_size, n_samples, p_layers[l].n_X))
+            log_q[l] = log_q[l].reshape((batch_size, n_samples))
+            log_p[l] = log_p[l].reshape((batch_size, n_samples))
+            log_p_all += log_p[l]   # agregate all layers
+            log_q_all += log_q[l]   # agregate all layers
+
+        # Approximate log P(X)
+        log_px = f_logsumexp(log_p_all-log_q_all, axis=1) - T.log(n_samples)
+        
+        # Calculate samplig weights
+        log_pq = (log_p_all-log_q_all-T.log(n_samples))
+        w_norm = f_logsumexp(log_pq, axis=1)
+        log_w = log_pq-T.shape_padright(w_norm)
+        w = T.exp(log_w)
+
+        self.do_detailed_inference = theano.function(  
+                            inputs=[X_batch, n_samples], 
+                            outputs=[log_px, w] + samples,
+                            name="do_detailed_inference")
+
+    def on_init(self, model):
+        self.compile(model)
+
+    def on_iter(self, model):
+        n_samples = self.n_samples
+        n_datapoints = self.dataset.n_datapoints
+
+        if n_samples <= 10:
+            batch_size = 100
+        elif n_samples <= 100:
+            batch_size = 10
+        else:
+            batch_size = 1
+    
+        n_layers = len(model.p_layers)
+
+        self.logger.info("running detailed_inference")
+        # Iterate over dataset
+        for batch_idx in xrange(n_datapoints//batch_size):
+            first = batch_idx*batch_size
+            last = first + batch_size
+            X_batch = self.X[first:last]
+
+            outputs = self.do_detailed_inference(X_batch, int(n_samples))
+            log_px , outputs = outputs[0], outputs[1:]
+            w      , outputs = outputs[0], outputs[1:]
+            samples          = outputs[:n_layers]
+                
+            for i in xrange(batch_size):
+                self.dlog.append_all({
+                    'log_px': log_px[i],
+                    'w': w[i],
+                })
+                for l in xrange(n_layers):
+                    self.dlog.append('samples.L%d'%l, samples[l])
+

@@ -9,10 +9,9 @@ import numpy as np
 import theano 
 import theano.tensor as T
 from theano.printing import Print
-from theano.tensor.shared_randomstreams import RandomStreams
 
-from learning.rws import TopModule, Module, theano_rng
 from learning.model import default_weights
+from learning.models.rws import TopModule, Module, theano_rng
 from learning.utils.unrolled_scan import unrolled_scan
 
 _logger = logging.getLogger(__name__)
@@ -32,7 +31,6 @@ class DARNTop(TopModule):
 
         self.set_hyper_params(hyper_params)
 
-
     def log_prob(self, X):
         """ Evaluate the log-probability for the given samples.
 
@@ -49,27 +47,14 @@ class DARNTop(TopModule):
         n_X, = self.get_hyper_params(['n_X'])
         b, W = self.get_model_params(['b', 'W'])
         
-        batch_size = X.shape[0]
+        W = T.tril(W, k=-1)
 
-        #------------------------------------------------------------------
-    
-        a_init    = T.zeros([batch_size, n_X]) + T.shape_padleft(b)
-        post_init = T.zeros([batch_size], dtype=floatX)
+        prob_X = self.sigmoid(T.dot(X, W) + b)
+        log_prob = X*T.log(prob_X) + (1-X)*T.log(1-prob_X)
+        log_prob = T.sum(log_prob, axis=1)
 
-        def one_iter(i, xi, Wi, bi, a, post):
-            pi   = self.sigmoid(a[:,i])
-            post = post + T.log(pi*xi + (1-pi)*(1-xi))            
-            a    = a + T.outer(xi, Wi) 
-            return a, post
+        return log_prob
 
-        [a, post], updates = unrolled_scan(
-                    fn=one_iter,
-                    sequences=[T.arange(n_X), X.T, W, b],
-                    outputs_info=[a_init, post_init],
-                    unroll=self.unroll_scan
-                )
-        assert len(updates) == 0
-        return post[-1,:]
 
     def sample(self, n_samples):
         """ Sample from this toplevel module and return X ~ P(X), log(P(X))
@@ -148,27 +133,14 @@ class DARN(Module):
         n_X, n_Y = self.get_hyper_params(['n_X', 'n_Y'])
         b, W, U  = self.get_model_params(['b', 'W', 'U'])
         
-        batch_size = X.shape[0]
+        W = T.tril(W, k=-1)
 
-        #------------------------------------------------------------------
-    
-        a_init    = T.dot(Y, U) + T.shape_padleft(b)   # shape (batch, n_vis)
-        post_init = T.zeros([batch_size], dtype=floatX)
+        prob_X = self.sigmoid(T.dot(X, W) + T.dot(Y, U) + T.shape_padleft(b))
+        log_prob = X*T.log(prob_X) + (1-X)*T.log(1-prob_X)
+        log_prob = T.sum(log_prob, axis=1)
 
-        def one_iter(i, xi, Wi, bi, a, post):
-            pi   = self.sigmoid(a[:,i])
-            post = post + T.log(pi*xi + (1-pi)*(1-xi))            
-            a    = a + T.outer(xi, Wi) 
-            return a, post
+        return log_prob
 
-        [a, post], updates = unrolled_scan(
-                    fn=one_iter,
-                    sequences=[T.arange(n_X), X.T, W, b],
-                    outputs_info=[a_init, post_init],
-                    unroll=self.unroll_scan
-                )
-        assert len(updates) == 0
-        return post[-1,:]
 
     def sample(self, Y):
         """ Evaluate the log-probability for the given samples.

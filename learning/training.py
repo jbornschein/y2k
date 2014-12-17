@@ -67,7 +67,7 @@ class TrainerBase(HyperBase):
             pass
         else:
             raise ArgumentError('Unknown datatype')
-        self.shvar[name] = theano.shared(value, name=name)
+        self.shvar[name] = theano.shared(value, name=name, allow_downcast=True)
         self.shvar_update_fnc[name] = update_fnc
         
     def update_shvars(self):
@@ -111,6 +111,7 @@ class Trainer(TrainerBase):
         self.register_hyper_param("learning_rate_s", default=1e-2, help="Learning rate")
         self.register_hyper_param("lr_decay", default=1.0, help="Learning rated decau per epoch")
         self.register_hyper_param("beta", default=0.95, help="Momentum factor")
+        self.register_hyper_param("weight_decay", default=0.0, help="Weight decay")
         self.register_hyper_param("batch_size", default=100, help="")
         self.register_hyper_param("sleep_interleave", default=5, help="")
         self.register_hyper_param("layer_discount", default=1.0, help="Reduce LR for each successive layer by this factor")
@@ -123,6 +124,7 @@ class Trainer(TrainerBase):
         self.mk_shvar('lr_p', np.zeros(2), lambda self: self.calc_learning_rates(self.learning_rate_p))
         self.mk_shvar('lr_q', np.zeros(2), lambda self: self.calc_learning_rates(self.learning_rate_q))
         self.mk_shvar('lr_s', np.zeros(2), lambda self: self.calc_learning_rates(self.learning_rate_s))
+        self.mk_shvar('weight_decay', 0.0)
 
         self.set_hyper_params(hyper_params)
     
@@ -146,6 +148,7 @@ class Trainer(TrainerBase):
         lr_p = self.shvar['lr_p']
         lr_q = self.shvar['lr_q']
         beta = self.shvar['beta']
+        weight_decay = self.shvar['weight_decay']
         batch_size = self.shvar['batch_size']
         n_samples = self.shvar['n_samples']
 
@@ -182,7 +185,7 @@ class Trainer(TrainerBase):
             )
 
             updates[gradient_old] = dTheta
-            updates[shvar] = shvar + dTheta
+            updates[shvar] = shvar + dTheta - weight_decay*(shvar+dTheta)
 
         self.do_step = theano.function(  
                             inputs=[batch_idx],
@@ -211,7 +214,7 @@ class Trainer(TrainerBase):
             )
 
             updates[gradient_old] = dTheta
-            updates[shvar] = shvar + dTheta
+            updates[shvar] = shvar + dTheta - weight_decay*(shvar+dTheta)
 
         self.do_sleep_step = theano.function(  
                             inputs=[n_dreams],
@@ -235,8 +238,8 @@ class Trainer(TrainerBase):
         self.logger.info("Dataset contains %d datapoints in %d mini-batches (%d datapoints per mini-batch)" %
             (n_datapoints, n_batches, self.batch_size))
         self.logger.info("Using %d training samples" % self.n_samples)
-        self.logger.info("lr_p=%3.1e, lr_q=%3.1e, lr_s=%3.1e, layer_discount=%4.2f" %
-            (self.learning_rate_p, self.learning_rate_q, self.learning_rate_s, self.layer_discount))
+        self.logger.info("lr_p=%3.1e, lr_q=%3.1e, lr_s=%3.1e, lr_decay=%5.1e layer_discount=%4.2f" %
+            (self.learning_rate_p, self.learning_rate_q, self.learning_rate_s, self.lr_decay, self.layer_discount))
 
         epoch = 0
         # Perform first epoch
@@ -277,9 +280,9 @@ class Trainer(TrainerBase):
         self.shuffle_train_data()
 
         # Update learning rated
-        self.lr_p = self.calc_learning_rates(self.learning_rate_p / self.lr_decay**epoch)
-        self.lr_q = self.calc_learning_rates(self.learning_rate_q / self.lr_decay**epoch)
-        self.lr_s = self.calc_learning_rates(self.learning_rate_s / self.lr_decay**epoch)
+        self.shvar['lr_p'].set_value((self.calc_learning_rates(self.learning_rate_p / self.lr_decay**epoch)).astype(floatX))
+        self.shvar['lr_q'].set_value((self.calc_learning_rates(self.learning_rate_q / self.lr_decay**epoch)).astype(floatX))
+        self.shvar['lr_s'].set_value((self.calc_learning_rates(self.learning_rate_s / self.lr_decay**epoch)).astype(floatX))
 
         widgets = ["Epoch %d, step "%(epoch+1), pbar.Counter(), ' (', pbar.Percentage(), ') ', pbar.Bar(), ' ', pbar.Timer(), ' ', pbar.ETA()]
         bar = pbar.ProgressBar(widgets=widgets, maxval=n_batches).start()

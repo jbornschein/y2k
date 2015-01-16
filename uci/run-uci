@@ -27,6 +27,7 @@ def run_experiment(args):
     from learning.models.sbn  import SBN, SBNTop
     from learning.models.darn import DARN, DARNTop
     from learning.models.nade import NADE, NADETop
+    from learning.models.noisyor import NoisyOR
 
 
     _logger.debug("Arguments %s" % args)
@@ -53,6 +54,7 @@ def run_experiment(args):
         "sbn" : (SBN, SBNTop),
         "darn": (DARN, DARNTop), 
         "nade": (NADE, NADETop),
+        "nor" : (NoisyOR, SBNTop),
     }
 
     if not args.p_model in layer_models:
@@ -138,7 +140,6 @@ def run_experiment(args):
         learning_rate_q=lr_q,
         learning_rate_s=lr_s,
         layer_discount=1.0,
-        anneal=1.,
         dataset=dataset, 
         model=model,
         termination=EarlyStopping(lookahead=5, min_epochs=160),

@@ -29,6 +29,7 @@ def run_experiment(args):
     from learning.models.dsbn import DSBN
     from learning.models.darn import DARN, DARNTop
     from learning.models.nade import NADE, NADETop
+    from learning.models.noisyor import NoisyOR
 
     np.set_printoptions(precision=2)
 
@@ -43,6 +44,7 @@ def run_experiment(args):
         "dsbn": (DSBN, SBNTop),
         "darn": (DARN, DARNTop), 
         "nade": (NADE, NADETop),
+        "nor" : (NoisyOR, SBNTop),
     }
 
     if not args.p_model in layer_models:

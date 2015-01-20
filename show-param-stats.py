@@ -67,7 +67,7 @@ if __name__ == "__main__":
                     v_max  = np.max(values, axis=1)
                     v_mean = np.mean(values, axis=1)
 
-                    pylab.errorbar(np.arange(iterations), v_mean, yerr=[v_min, v_max], label=k)
+                    pylab.errorbar(np.arange(iterations), v_mean, yerr=[v_max-v_mean, v_mean-v_min], label=k)
                     
         except KeyError as e:
             logger.info("Failed to read data from %s: %s" % (fname, e))

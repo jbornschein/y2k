@@ -11,11 +11,12 @@ import theano.tensor as T
 from theano.printing import Print
 
 from learning.rws import TopModule, Module, theano_rng
-from learning.model import default_weights
 
 _logger = logging.getLogger(__name__)
 floatX = theano.config.floatX
 
+def default_weights(rows, cols):
+    return 0.01*np.random.uniform(size=(rows, cols))
 
 #----------------------------------------------------------------------------
 

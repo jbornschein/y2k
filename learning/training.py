@@ -214,11 +214,7 @@ class Trainer(TrainerBase):
             )
 
             updates[gradient_old] = dTheta
-<<<<<<< HEAD
-            updates[shvar] = shvar + dTheta - weight_decay*shvar
-=======
             updates[shvar] = shvar + dTheta - weight_decay*(shvar+dTheta)
->>>>>>> master
 
         self.do_sleep_step = theano.function(  
                             inputs=[n_dreams],

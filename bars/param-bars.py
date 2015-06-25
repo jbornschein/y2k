@@ -14,15 +14,19 @@ from learning.nade import NADE, NADETop
 
 n_vis = 5*5
 n_hid = 15
-n_qhid = 2*n_hid
+#n_qhid = 2*n_hid
 
-dataset = BarsData(which_set='train', n_datapoints=10000)
-valiset = BarsData(which_set='valid', n_datapoints=1000)
-testset = BarsData(which_set='test' , n_datapoints=10000)
+dataset = BarsData(which_set='train', n_datapoints=5000)
+valiset = BarsData(which_set='valid', n_datapoints=5000)
+testset = BarsData(which_set='test' , n_datapoints=5000)
 
 p_layers=[
     SBN(      
         n_X=n_vis,
+        n_Y=n_hid,
+    ),
+    SBN(
+        n_X=n_hid,
         n_Y=n_hid,
     ),
     SBNTop(
@@ -34,8 +38,10 @@ q_layers=[
     SBN(
         n_X=n_hid,
         n_Y=n_vis,
-#        n_hid=n_qhid,
-#        unroll_scan=1        
+    ),
+    SBN(
+        n_X=n_hid,
+        n_Y=n_hid,
     )
 ]
 
@@ -46,10 +52,11 @@ model = LayerStack(
 
 trainer = Trainer(
     n_samples=10,
+    beta=0.0,
     learning_rate_p=1e-1,
     learning_rate_q=1e-1,
-    learning_rate_s=1e-1,
-    batch_size=10,
+    learning_rate_s=0e-1,
+    batch_size=100,
     dataset=dataset, 
     model=model,
     termination=EarlyStopping(),
@@ -59,13 +66,13 @@ trainer = Trainer(
     #],
     epoch_monitors=[
         DLogModelParams(),
-        MonitorLL(name="valiset", data=valiset, n_samples=[1, 5, 25, 100]),
-        MonitorLL(name="testset", data=testset, n_samples=[1, 5, 25, 100]),
+        MonitorLL(name="valiset", data=valiset, n_samples=[1, 10]),
+        MonitorLL(name="testset", data=testset, n_samples=[1, 10]),
         #BootstrapLL(name="valiset-bootstrap", data=valiset, n_samples=[1, 5, 25, 100])
     ],
     final_monitors=[
-        MonitorLL(name="final-valiset", data=valiset, n_samples=[1, 5, 25, 100]),
-        MonitorLL(name="final-testset", data=testset, n_samples=[1, 5, 25, 100]),
+        MonitorLL(name="final-valiset", data=valiset, n_samples=[1, 10, 100]),
+        MonitorLL(name="final-testset", data=testset, n_samples=[1, 10, 100]),
         SampleFromP(data=valiset, n_samples=100),
     ],
 )

@@ -133,7 +133,7 @@ class MonitorLL(Monitor):
         #
         for K in n_samples:
             if K <= 10:
-                batch_size = 100
+                batch_size = 10
             elif K <= 100:
                 batch_size = 10
             else:

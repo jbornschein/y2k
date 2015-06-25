@@ -221,6 +221,7 @@ class Trainer(TrainerBase):
                             outputs=log_PX,
                             updates=updates,
                             name="do_sleep_step")
+        self.do_sleep_step = None
 
     def perform_learning(self):
         self.update_shvars()

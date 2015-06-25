@@ -54,8 +54,8 @@ def run_experiment(args):
     q_layer, q_top = layer_models[args.q_model]
 
     # n_samples to evaluate model
-    n_samples_epoch = [1, 5, 25, 100]
-    n_samples_final = [1, 5, 10, 25, 100, 500, 1000, 10000, 100000]
+    n_samples_epoch = [10]
+    n_samples_final = [1, 5, 10, 25, 100]
     if (args.p_model in ['darn', 'nade']) or (args.q_model in ['darn', 'nade']):
         n_samples_epoch = [1, 5, 25]
         n_samples_final = [1, 5, 10, 25, 100, 500]
@@ -175,6 +175,8 @@ def run_experiment(args):
         learning_rate_p=lr_p,
         learning_rate_q=lr_q,
         learning_rate_s=lr_s,
+#        beta=0.95,
+        beta=0.0,
         layer_discount=args.ldiscount,
         lr_decay=args.lrdecay,
         dataset=dataset, 

@@ -149,6 +149,7 @@ def run_experiment(args):
         learning_rate_p=lr_p,
         learning_rate_q=lr_q,
         learning_rate_s=lr_s,
+        beta=0.0,
         layer_discount=args.ldiscount,
         dataset=dataset, 
         model=model,
@@ -156,7 +157,8 @@ def run_experiment(args):
         epoch_monitors=[
             DLogModelParams(), 
             SampleFromP(n_samples=100),
-            MonitorLL(name="valiset", data=valiset, n_samples=[1, 5, 25, 100]),
+            MonitorLL(name="trainset", data=dataset, n_samples=[1, 5, 10, 100]),
+            MonitorLL(name="valiset", data=valiset, n_samples=[1, 5, 10, 100]),
         ],
         final_monitors=[
             MonitorLL(name="final-valiset", data=valiset, n_samples=[1, 5, 10, 25, 100, 500, 1000, 10000, 100000]),
